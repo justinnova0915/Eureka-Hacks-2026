@@ -4,26 +4,26 @@ const SF_BASE = 'https://gleitz.github.io/midi-js-soundfonts/MusyngKite';
 
 export const INST_CONFIG = {
   guitar: {
-    name: 'Guitar', emoji: '', color: '#f59e0b',
+    name: 'Guitar', emoji: '🎸', color: '#f59e0b',
     urls: { E2:'E2.mp3', A2:'A2.mp3', D3:'D3.mp3', G3:'G3.mp3',
             B3:'B3.mp3', E4:'E4.mp3', A4:'A4.mp3', D5:'D5.mp3' },
     base: `${SF_BASE}/acoustic_guitar_nylon-mp3/`,
   },
   piano: {
-    name: 'Piano', emoji: '', color: '#3b82f6',
+    name: 'Piano', emoji: '🎹', color: '#3b82f6',
     urls: { A2:'A2.mp3', C3:'C3.mp3', E3:'E3.mp3', G3:'G3.mp3',
             A3:'A3.mp3', C4:'C4.mp3', E4:'E4.mp3', G4:'G4.mp3',
             A4:'A4.mp3', C5:'C5.mp3' },
     base: `${SF_BASE}/acoustic_grand_piano-mp3/`,
   },
   flute: {
-    name: 'Flute', emoji: '', color: '#10b981',
+    name: 'Flute', emoji: '🎵', color: '#10b981',
     urls: { C4:'C4.mp3', E4:'E4.mp3', G4:'G4.mp3', A4:'A4.mp3',
             C5:'C5.mp3', E5:'E5.mp3', G5:'G5.mp3' },
     base: `${SF_BASE}/flute-mp3/`,
   },
-  drums: { name: 'Drums', emoji: '', color: '#ef4444', urls: null },
-  synth: { name: 'Synth', emoji: '', color: '#8b5cf6', urls: null },
+  drums: { name: 'Drums', emoji: '🥁', color: '#ef4444', urls: null },
+  synth: { name: 'Synth', emoji: '🎛️', color: '#8b5cf6', urls: null },
 };
 
 export class InstrumentEngine {

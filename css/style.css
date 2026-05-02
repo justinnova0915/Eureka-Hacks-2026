@@ -72,7 +72,8 @@ header {
 
 .badge {
   display: flex; align-items: center; gap: 0.4rem;
-  border-radius: 20px; padding: 0.25rem 0.85rem; font-size: 0.82rem;
+  border-radius: 9999px; padding: 0.35rem 0.95rem; font-size: 0.85rem;
+  backdrop-filter: blur(10px);
 }
 #instrument-badge {
   background: rgba(124,58,237,0.18); border: 1px solid var(--accent);
@@ -142,13 +143,15 @@ footer {
 #inst-row { display: flex; gap: 0.4rem; justify-content: center; }
 .inst-btn {
   display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
-  padding: 0.45rem 1.1rem;
+  padding: 0.5rem 1.25rem;
   background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-  border-radius: 8px; color: var(--dim); cursor: pointer;
-  font-size: 1rem; transition: all 0.15s;
+  border-radius: 9999px; color: var(--dim); cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
-.inst-btn span { font-size: 0.65rem; }
-.inst-btn:hover { background: rgba(124,58,237,0.15); border-color: var(--accent); color: var(--text); }
+.inst-btn span { font-size: 0.9rem; font-weight: 500; }
+.inst-btn:hover { background: rgba(124,58,237,0.15); border-color: var(--accent); color: var(--text); transform: scale(1.05); }
 .inst-btn.active { color: var(--text); }
 [data-inst="guitar"].active { border-color: var(--c-guitar); background: rgba(245,158,11,0.15); }
 [data-inst="piano"].active  { border-color: var(--c-piano);  background: rgba(59,130,246,0.15); }
@@ -167,8 +170,13 @@ footer {
 }
 
 #ctrl-row button {
-  padding: 0.3rem 0.9rem; border-radius: 6px; border: 1px solid;
-  cursor: pointer; font-size: 0.8rem; font-weight: 500; transition: all 0.15s;
+  padding: 0.4rem 1.2rem; border-radius: 9999px; border: 1px solid;
+  cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+#ctrl-row button:hover {
+  transform: scale(1.05);
 }
 #ai-btn     { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #ef4444; }
 #ai-btn.active { background: #ef4444; color: #fff; }
