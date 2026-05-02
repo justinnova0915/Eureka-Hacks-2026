@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GestureJam</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="loader-content">
+    <div class="logo-gradient">GestureJam</div>
+    <p id="loading-status">Initializing...</p>
+    <div class="progress-bar"><div id="progress-fill"></div></div>
+    <p class="loader-hint">Allow camera access when prompted</p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div id="logo"> GestureJam</div>
+    <div id="instrument-badge">
+      <span id="inst-emoji">🎸</span>
+      <span id="inst-name">Guitar Mode</span>
+    </div>
+    <div id="gesture-badge">
+      <span id="gesture-label">Ready</span>
+    </div>
+    <div id="ai-badge" class="hidden">
+      <span class="pulse-dot"></span>
+      AI Playing
+    </div>
+  </header>
+
+  <main>
+    <section id="camera-panel">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="cam-hint">Pick up any object and move!</div>
+    </section>
+
+    <section id="viz-panel">
+      <canvas id="visualizer"></canvas>
+      <div id="scale-label"></div>
+    </section>
+  </main>
+
+  <footer>
+    <div id="inst-row">
+      <button class="inst-btn active" data-inst="guitar" title="Guitar [1]">🎸<span>Guitar</span></button>
+      <button class="inst-btn" data-inst="piano"  title="Piano [2]">🎹<span>Piano</span></button>
+      <button class="inst-btn" data-inst="flute"  title="Flute [3]">🎵<span>Flute</span></button>
+      <button class="inst-btn" data-inst="drums"  title="Drums [4]">🥁<span>Drums</span></button>
+      <button class="inst-btn" data-inst="synth"  title="Synth [5]">🎛️<span>Synth</span></button>
+    </div>
+    <div id="ctrl-row">
+      <div class="ctrl-group">
+        <label>Scale</label>
+        <select id="scale-select">
+          <option value="pentatonic">Pentatonic</option>
+          <option value="major">Major</option>
+          <option value="minor">Minor</option>
+          <option value="blues">Blues</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <label>Root</label>
+        <select id="root-select">
+          <option value="60">C</option><option value="61">C#</option>
+          <option value="62">D</option><option value="63">D#</option>
+          <option value="64">E</option><option value="65">F</option>
+          <option value="66">F#</option><option value="67">G</option>
+          <option value="68">G#</option><option value="69">A</option>
+          <option value="70">A#</option><option value="71">B</option>
+        </select>
+      </div>
+      <button id="ai-btn">🤖 AI Takeover</button>
+      <button id="record-btn">⏺ Record</button>
+      <button id="auto-btn">Auto Instrument: OFF</button>
+    </div>
+  </footer>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
+<!-- Tone.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<!-- App -->
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
