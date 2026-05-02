@@ -31,9 +31,35 @@ let detector      = null;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let aiActive    = false;
-let aiTimer     = null;
 let autoMode    = false;
 let isRecording = false;
+
+let phraseBuffer = [];
+let lastNoteTime = 0;
+let idleTimer    = null;
+let isThinking   = false;
+const apiKeyEl   = document.getElementById('api-key');
+
+// ── Object to Instrument Map ──────────────────────────────────────────────────
+const OBJ_MAP = {
+  'person': 'synth', 'bicycle': 'synth', 'car': 'drums', 'motorcycle': 'drums', 'airplane': 'synth',
+  'bus': 'drums', 'train': 'drums', 'truck': 'drums', 'boat': 'flute', 'traffic light': 'synth',
+  'fire hydrant': 'drums', 'stop sign': 'drums', 'parking meter': 'synth', 'bench': 'piano',
+  'bird': 'flute', 'cat': 'flute', 'dog': 'synth', 'horse': 'drums', 'sheep': 'flute', 'cow': 'drums',
+  'elephant': 'drums', 'bear': 'drums', 'zebra': 'drums', 'giraffe': 'flute', 'backpack': 'drums',
+  'umbrella': 'synth', 'handbag': 'piano', 'tie': 'guitar', 'suitcase': 'piano', 'frisbee': 'synth',
+  'skis': 'guitar', 'snowboard': 'guitar', 'sports ball': 'drums', 'kite': 'flute', 'baseball bat': 'guitar',
+  'baseball glove': 'piano', 'skateboard': 'synth', 'surfboard': 'piano', 'tennis racket': 'guitar',
+  'bottle': 'flute', 'wine glass': 'flute', 'cup': 'drums', 'fork': 'guitar', 'knife': 'guitar',
+  'spoon': 'guitar', 'bowl': 'drums', 'banana': 'guitar', 'apple': 'drums', 'sandwich': 'piano',
+  'orange': 'drums', 'broccoli': 'drums', 'carrot': 'flute', 'hot dog': 'guitar', 'pizza': 'piano',
+  'donut': 'drums', 'cake': 'piano', 'chair': 'piano', 'couch': 'piano', 'potted plant': 'flute',
+  'bed': 'piano', 'dining table': 'piano', 'toilet': 'drums', 'tv': 'synth', 'laptop': 'piano',
+  'mouse': 'synth', 'remote': 'synth', 'keyboard': 'piano', 'cell phone': 'synth', 'microwave': 'synth',
+  'oven': 'synth', 'toaster': 'synth', 'sink': 'drums', 'refrigerator': 'drums', 'book': 'piano',
+  'clock': 'drums', 'vase': 'flute', 'scissors': 'synth', 'teddy bear': 'synth', 'hair drier': 'synth',
+  'toothbrush': 'guitar'
+};
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
@@ -84,6 +110,10 @@ function updateObjectBadge() {
   if (label) {
     camHint.textContent = `🎵 ${label} detected — play!`;
     camHint.style.color = '#06b6d4';
+    if (autoMode) {
+      const inst = OBJ_MAP[label];
+      if (inst && inst !== engine.current) switchInstrument(inst);
+    }
   } else if (holding) {
     camHint.textContent = `✊ Grip detected (${pose}) — play!`;
     camHint.style.color = '#10b981';
@@ -115,11 +145,31 @@ function onGesture(e) {
   gestureLabel.textContent = gesture.type;
 
   const notes = mapper.gestureToMidi(gesture, isDrum);
+  const now = performance.now();
+  
   notes.forEach(({ note, velocity, delay }) => {
     engine.playNote(note, velocity, delay);
   });
 
+  // Throttle recording to phrase buffer (e.g. 1 per 160ms)
+  if (now - lastNoteTime > 160 && !isThinking) {
+    notes.forEach(({ note, velocity }) => {
+      phraseBuffer.push({ note, velocity, timestamp: now });
+      if (phraseBuffer.length > 20) phraseBuffer.shift();
+    });
+    lastNoteTime = now;
+    resetIdleTimer();
+  }
+
   if (autoMode) maybeAutoSwitch(gesture);
+}
+
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  if (!aiActive) return;
+  idleTimer = setTimeout(() => {
+    if (phraseBuffer.length >= 4 && !isThinking) triggerGemini();
+  }, 2000);
 }
 
 function onIdle() {
@@ -170,31 +220,75 @@ aiBtn.addEventListener('click', async () => {
   aiActive = !aiActive;
   aiBtn.classList.toggle('active', aiActive);
   aiBadge.classList.toggle('hidden', !aiActive);
-  if (aiActive) scheduleAiNote();
-  else          clearTimeout(aiTimer);
+  
+  if (aiActive) {
+    aiBadge.innerHTML = '<span class="pulse-dot"></span> AI Listening';
+    phraseBuffer = [];
+    resetIdleTimer();
+  } else {
+    clearTimeout(idleTimer);
+  }
 });
 
-function scheduleAiNote() {
-  if (!aiActive) return;
-  const log = engine.getMidiLog();
-  let note, velocity;
-
-  if (log.length >= 4) {
-    // Replay a note from recent history with slight variation
-    const src = log[Math.floor(Math.random() * log.length)];
-    note     = src.note + [-2, -1, 0, 1, 2][Math.floor(Math.random() * 5)];
-    velocity = Math.max(40, Math.min(127, src.velocity + Math.round((Math.random() - 0.5) * 20)));
-  } else {
-    note     = mapper.xToNote(Math.random(), engine.current === 'drums');
-    velocity = 70 + Math.round(Math.random() * 40);
+async function triggerGemini() {
+  const apiKey = apiKeyEl.value.trim();
+  if (!apiKey) {
+    console.warn("Please enter a Gemini API Key!");
+    aiActive = false;
+    aiBtn.classList.remove('active');
+    aiBadge.classList.add('hidden');
+    return;
   }
+  
+  isThinking = true;
+  aiBadge.textContent = "AI Thinking...";
+  
+  const baseTime = phraseBuffer[0].timestamp;
+  const promptData = phraseBuffer.map(p => ({
+    note: p.note, velocity: p.velocity, timeMs: Math.round(p.timestamp - baseTime)
+  }));
+  
+  const prompt = `Here is a sequence of musical notes played by the user with relative timestamps (ms): ${JSON.stringify(promptData)}. Respond with a logical continuation (up to 8 notes) using exactly this JSON format: [{"note": 60, "velocity": 80, "timeMs": 500}]. Do not include markdown formatting or backticks, just the raw JSON array.`;
 
-  engine.playNote(note, velocity, 0, 350);
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7 }
+      })
+    });
+    
+    const data = await res.json();
+    let text = data.candidates[0].content.parts[0].text;
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const continuation = JSON.parse(text);
+    
+    playContinuation(continuation);
+  } catch (e) {
+    console.error("Gemini AI error:", e);
+    isThinking = false;
+    aiBadge.innerHTML = '<span class="pulse-dot"></span> AI Listening';
+  }
+}
 
-  const bpm   = 120;
-  const beat  = 60000 / bpm;
-  const delay = beat * [0.5, 1, 1, 1.5, 2][Math.floor(Math.random() * 5)];
-  aiTimer = setTimeout(scheduleAiNote, delay);
+function playContinuation(notes) {
+  aiBadge.textContent = "AI Playing...";
+  // Clear buffer so we don't infinitely trigger on AI's own notes if they get picked up
+  phraseBuffer = [];
+  
+  notes.forEach(n => {
+    setTimeout(() => {
+      engine.playNote(n.note, n.velocity, 0, 350);
+    }, n.timeMs || 0);
+  });
+  
+  const maxTime = notes.length ? Math.max(...notes.map(n => n.timeMs || 0)) : 0;
+  setTimeout(() => {
+    isThinking = false;
+    if (aiActive) aiBadge.innerHTML = '<span class="pulse-dot"></span> AI Listening';
+  }, maxTime + 500);
 }
 
 // ── Record ────────────────────────────────────────────────────────────────────

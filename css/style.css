@@ -162,10 +162,13 @@ footer {
 }
 .ctrl-group { display: flex; align-items: center; gap: 0.35rem; }
 .ctrl-group label { font-size: 0.72rem; color: var(--dim); }
-.ctrl-group select {
+.ctrl-group select,
+.ctrl-group input {
   background: var(--bg); border: 1px solid var(--border);
   border-radius: 5px; color: var(--text); padding: 0.25rem 0.4rem; font-size: 0.78rem;
 }
+.ctrl-group input { width: 100px; }
+.ctrl-group input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px rgba(124,58,237,0.3); }
 
 #ctrl-row button {
   padding: 0.4rem 1.2rem; border-radius: 9999px; border: 1px solid;
