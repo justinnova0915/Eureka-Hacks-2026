@@ -157,7 +157,7 @@ main {
 }
 
 #camera-panel {
-  position: relative; width: 100%; max-width: 640px; height: 360px;
+  position: relative; width: 100%; max-width: 640px; height: 480px;
   flex-shrink: 0;
   background: #000;
   border: 1px solid var(--border);

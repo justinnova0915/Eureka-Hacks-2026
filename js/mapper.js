@@ -25,6 +25,8 @@ export class NoteMapper {
 
   // Map x ∈ [0,1] to a MIDI note number
   xToNote(x, isDrum = false) {
+    x = Math.max(0, Math.min(1, 1 - x)); // Mirror X to match the mirrored screen feed
+    
     if (isDrum) {
       return DRUM_MAP[Math.min(7, Math.floor(x * 8))];
     }

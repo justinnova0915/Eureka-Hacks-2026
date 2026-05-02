@@ -267,11 +267,11 @@ export class GestureDetector extends EventTarget {
       }
     }
 
-    // Slide: gentle horizontal drift — throttled so it doesn't flood notes
-    if (ext >= 2 && Math.abs(vel.x) > 0.25 && Math.abs(vel.x) < 1.1) {
-      if (ts - this.lastGestureTs > 180) {
+    // Slide / Theremin: Hold 2+ fingers up and glide hand horizontally
+    if (ext >= 1 && Math.abs(vel.x) > 0.1) {
+      if (ts - this.lastGestureTs > 50) { // 50ms allows very fluid glissando
         this.lastGestureTs = ts;
-        return { type: 'slide', x: lm[0].x, y: lm[0].y, velocity: 0.55, dx: vel.x };
+        return { type: 'slide', x: lm[0].x, y: lm[0].y, velocity: 0.6, dx: vel.x };
       }
     }
 
