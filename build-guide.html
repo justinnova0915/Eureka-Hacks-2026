@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maestro Mode — Gemini Build Pipeline</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--surface3:#30363d;
+  --border:#30363d;--border2:#484f58;
+  --text:#e6edf3;--muted:#8b949e;--dim:#484f58;
+  --blue:#58a6ff;--green:#3fb950;--purple:#d2a8ff;
+  --amber:#e3b341;--red:#f85149;--cyan:#79c0ff;
+  --tag-bg:rgba(88,166,255,.12);--tag-border:rgba(88,166,255,.3);
+}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.6}
+.wrap{max-width:960px;margin:0 auto;padding:32px 24px}
+
+/* NAV */
+.nav{position:sticky;top:0;background:rgba(13,17,23,.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:12px 0;z-index:100;margin-bottom:40px}
+.nav-inner{max-width:960px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:24px}
+.nav-title{font-weight:600;font-size:13px;letter-spacing:.5px;color:var(--text)}
+.nav-links{display:flex;gap:16px;font-size:12px}
+.nav-links a{color:var(--muted);text-decoration:none;transition:.15s}
+.nav-links a:hover{color:var(--blue)}
+
+/* HERO */
+.hero{margin-bottom:48px;padding-bottom:40px;border-bottom:1px solid var(--border)}
+.hero-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:var(--tag-bg);border:1px solid var(--tag-border);border-radius:20px;font-size:11px;color:var(--blue);letter-spacing:.5px;margin-bottom:16px;font-weight:500}
+.hero h1{font-size:36px;font-weight:600;line-height:1.2;margin-bottom:12px}
+.hero h1 span{color:var(--blue)}
+.hero p{font-size:15px;color:var(--muted);max-width:640px;line-height:1.7}
+.hero-meta{display:flex;gap:16px;margin-top:20px;flex-wrap:wrap}
+.meta-pill{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--muted)}
+.meta-pill .dot{width:7px;height:7px;border-radius:50%}
+.dot-green{background:var(--green)}
+.dot-blue{background:var(--blue)}
+.dot-purple{background:var(--purple)}
+.dot-amber{background:var(--amber)}
+
+/* SECTION */
+.section{margin-bottom:48px}
+.section-header{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--blue);color:#000;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.section h2{font-size:20px;font-weight:600}
+.section-desc{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.7;max-width:700px}
+
+/* PROMPT BLOCK */
+.prompt-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px}
+.prompt-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.prompt-label{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase}
+.prompt-label.sys{color:var(--purple)}
+.prompt-label.user{color:var(--green)}
+.prompt-label.rag{color:var(--amber)}
+.prompt-label.fn{color:var(--cyan)}
+.copy-btn{padding:4px 14px;background:var(--surface3);border:1px solid var(--border2);border-radius:9999px;color:var(--muted);font-size:11px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.2s ease;backdrop-filter:blur(4px)}
+.copy-btn:hover{background:var(--surface2);color:var(--text);border-color:var(--blue);transform:scale(1.05);box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+.copy-btn.copied{color:var(--green);border-color:var(--green)}
+.prompt-body{padding:16px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.7;color:#cdd9e5;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow-y:auto}
+.prompt-body::-webkit-scrollbar{width:4px}
+.prompt-body::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:2px}
+
+/* ANNOTATIONS inside prompts */
+.ann{color:var(--amber);font-style:italic}
+.kw{color:var(--purple)}
+.val{color:var(--green)}
+.ph{color:var(--blue)}
+
+/* PIPELINE DIAGRAM */
+.pipeline{display:flex;flex-direction:column;gap:0;margin:24px 0}
+.pipe-row{display:flex;align-items:stretch;gap:0}
+.pipe-node{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px 16px;position:relative}
+.pipe-node.highlight{border-color:var(--blue);background:rgba(88,166,255,.05)}
+.pipe-node h4{font-size:12px;font-weight:600;letter-spacing:.3px;margin-bottom:4px}
+.pipe-node p{font-size:11px;color:var(--muted);line-height:1.5}
+.pipe-node .tag{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:500;margin-top:6px;letter-spacing:.3px}
+.tag-blue{background:rgba(88,166,255,.15);color:var(--blue)}
+.tag-green{background:rgba(63,185,80,.15);color:var(--green)}
+.tag-purple{background:rgba(210,168,255,.15);color:var(--purple)}
+.tag-amber{background:rgba(227,179,65,.15);color:var(--amber)}
+.tag-red{background:rgba(248,81,73,.15);color:var(--red)}
+.pipe-arrow{display:flex;align-items:center;justify-content:center;padding:6px;color:var(--muted);font-size:16px;flex-shrink:0}
+.pipe-connector{width:24px;display:flex;align-items:center;justify-content:center;color:var(--dim)}
+.pipe-cols{display:grid;grid-template-columns:1fr 24px 1fr 24px 1fr;gap:0;align-items:center}
+
+/* CODE */
+code{font-family:'JetBrains Mono',monospace;font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:3px;color:var(--cyan)}
+.code-block{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7;color:#cdd9e5;margin:12px 0;overflow-x:auto}
+.code-block .c{color:var(--muted);font-style:italic}
+.code-block .k{color:var(--purple)}
+.code-block .s{color:var(--green)}
+.code-block .v{color:var(--amber)}
+
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+.tbl th{background:var(--surface2);color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:rgba(255,255,255,.02)}
+
+/* INFO BOXES */
+.info-box{display:flex;gap:12px;padding:12px 16px;border-radius:6px;margin:16px 0;font-size:13px;line-height:1.6}
+.info-box.tip{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.25);color:#c3e6cb}
+.info-box.warn{background:rgba(227,179,65,.08);border:1px solid rgba(227,179,65,.25);color:#f0d070}
+.info-box.note{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);color:#a8d1f5}
+.info-box .icon{font-size:16px;flex-shrink:0;margin-top:1px}
+
+/* MILESTONE */
+.milestones{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}
+.ms{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px 14px}
+.ms-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ms-time{font-size:10px;font-weight:600;letter-spacing:1px;color:var(--blue)}
+.ms-title{font-size:12px;font-weight:600}
+.ms-desc{font-size:11px;color:var(--muted);line-height:1.5}
+
+/* RAG DIAGRAM */
+.rag-flow{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin:16px 0}
+.rag-title{font-size:11px;font-weight:600;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:16px}
+.rag-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.rag-box{padding:8px 12px;border-radius:5px;font-size:11px;font-weight:500;white-space:nowrap}
+.rag-arr{color:var(--dim);font-size:14px;flex-shrink:0}
+.rag-note{font-size:10px;color:var(--muted);font-style:italic;margin-left:4px;flex:1}
+
+/* INDEX */
+.idx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.idx-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;cursor:pointer;transition:.15s;text-decoration:none;display:block}
+.idx-card:hover{border-color:var(--blue);background:rgba(88,166,255,.05)}
+.idx-num{font-size:10px;color:var(--blue);font-weight:600;letter-spacing:.5px;margin-bottom:3px}
+.idx-name{font-size:12px;font-weight:500;color:var(--text)}
+.idx-sub{font-size:10px;color:var(--muted);margin-top:2px}
+
+hr{border:none;border-top:1px solid var(--border);margin:40px 0}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-inner">
+    <div class="nav-title">⬡ MAESTRO — GEMINI BUILD GUIDE</div>
+    <div class="nav-links">
+      <a href="#pipeline">Pipeline</a>
+      <a href="#system-prompt">System Prompt</a>
+      <a href="#rag">RAG</a>
+      <a href="#stages">Build Stages</a>
+      <a href="#debug">Debug Prompts</a>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-tag">⬡ STANFORD TREEHACKS 2025</div>
+    <h1>Maestro Mode<br><span>Gemini Build Pipeline</span></h1>
+    <p>Every prompt, in order, to build the full Maestro stack using Gemini 2.0 Flash or Pro. Includes system prompt engineering, RAG design, code-gen prompts by milestone, and debugging flows.</p>
+    <div class="hero-meta">
+      <div class="meta-pill"><div class="dot dot-green"></div>Gemini 2.0 Flash / Pro</div>
+      <div class="meta-pill"><div class="dot dot-blue"></div>Grounding + Code Execution</div>
+      <div class="meta-pill"><div class="dot dot-purple"></div>Vertex AI RAG Engine</div>
+      <div class="meta-pill"><div class="dot dot-amber"></div>12-Hour Build</div>
+    </div>
+  </div>
+
+  <!-- INDEX -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section h2" style="font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.5px">JUMP TO</div>
+    </div>
+    <div class="idx-grid">
+      <a class="idx-card" href="#pipeline">
+        <div class="idx-num">01</div>
+        <div class="idx-name">Full Pipeline Diagram</div>
+        <div class="idx-sub">Architecture + data flow</div>
+      </a>
+      <a class="idx-card" href="#system-prompt">
+        <div class="idx-num">02</div>
+        <div class="idx-name">System Prompt</div>
+        <div class="idx-sub">Paste into Gemini first</div>
+      </a>
+      <a class="idx-card" href="#rag">
+        <div class="idx-num">03</div>
+        <div class="idx-name">RAG Pipeline</div>
+        <div class="idx-sub">Docs, embeddings, retrieval</div>
+      </a>
+      <a class="idx-card" href="#h0">
+        <div class="idx-num">04</div>
+        <div class="idx-name">H0–3: MediaPipe</div>
+        <div class="idx-sub">Hands → MIDI</div>
+      </a>
+      <a class="idx-card" href="#h3">
+        <div class="idx-num">05</div>
+        <div class="idx-name">H3–6: Instruments</div>
+        <div class="idx-sub">Object → sound mapping</div>
+      </a>
+      <a class="idx-card" href="#h6">
+        <div class="idx-num">06</div>
+        <div class="idx-name">H6–9: AI Brain</div>
+        <div class="idx-sub">Gemini continuation API</div>
+      </a>
+      <a class="idx-card" href="#h9">
+        <div class="idx-num">07</div>
+        <div class="idx-name">H9–12: Polish</div>
+        <div class="idx-sub">Duet + demo + deploy</div>
+      </a>
+      <a class="idx-card" href="#debug">
+        <div class="idx-num">08</div>
+        <div class="idx-name">Debug Prompts</div>
+        <div class="idx-sub">Latency, drift, audio bugs</div>
+      </a>
+    </div>
+  </div>
+
+  <hr id="pipeline">
+
+  <!-- PIPELINE -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">1</div>
+      <h2>Full System Pipeline</h2>
+    </div>
+    <p class="section-desc">The complete data flow from webcam to sound to AI continuation. Each stage maps to a build milestone and a set of prompts below.</p>
+
+    <div class="pipeline">
+      <!-- Row 1 -->
+      <div class="pipe-cols">
+        <div class="pipe-node highlight">
+          <h4>📷 Webcam Input</h4>
+          <p>getUserMedia → 1280×720 @ 30fps video stream</p>
+          <span class="tag tag-green">Browser Native</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node highlight">
+          <h4>✋ MediaPipe Hands</h4>
+          <p>21 landmarks per hand, model complexity 1, WASM inference &lt;10ms</p>
+          <span class="tag tag-blue">@mediapipe/hands</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node highlight">
+          <h4>📐 Gesture Analyzer</h4>
+          <p>Pinch dist, Y-pitch, X-vol, velocity, fist/wave detection</p>
+          <span class="tag tag-blue">Custom JS</span>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+
+      <!-- Row 2 -->
+      <div class="pipe-cols">
+        <div class="pipe-node">
+          <h4>👁 COCO-SSD Detect</h4>
+          <p>TF.js lite_mobilenet_v2, runs every 2.5s, classifies held object</p>
+          <span class="tag tag-amber">@tensorflow-models/coco-ssd</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node">
+          <h4>🎸 Object → Instrument</h4>
+          <p>Lookup table: banana→guitar, book→piano, cup→drums etc. Auto-switches synth preset</p>
+          <span class="tag tag-amber">RAG-enhanced</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node highlight">
+          <h4>🎹 Scale + Note Map</h4>
+          <p>Y pos → note in scale (pentatonic/major/minor/blues), octave offset from hand height</p>
+          <span class="tag tag-blue">Custom JS</span>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+
+      <!-- Row 3 -->
+      <div class="pipe-cols">
+        <div class="pipe-node highlight">
+          <h4>🔊 Tone.js Synth</h4>
+          <p>5 instruments (PluckSynth, PolySynth, MonoSynth, MembraneSynth, continuous Synth), full FX chain</p>
+          <span class="tag tag-green">Tone.js v14</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node">
+          <h4>📝 Phrase Buffer</h4>
+          <p>Ring buffer of last 20 notes: {note, velocity, timestamp}. Flushes after idle trigger</p>
+          <span class="tag tag-blue">In-Memory</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node highlight">
+          <h4>⏱ Idle Trigger</h4>
+          <p>setTimeout watching lastNoteTime. Default 2s idle fires AI continuation. Configurable 1–5s</p>
+          <span class="tag tag-blue">Custom JS</span>
+        </div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+
+      <!-- Row 4 -->
+      <div class="pipe-cols">
+        <div class="pipe-node highlight">
+          <h4>🤖 Gemini API Call</h4>
+          <p>gemini-2.0-flash-exp, notes as context, returns JSON note array. &lt;800ms p50</p>
+          <span class="tag tag-purple">Gemini 2.0 Flash</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node">
+          <h4>🎵 JSON → Tone.js</h4>
+          <p>Parse [{note, duration, velocity}] array, schedule with Transport.scheduleOnce, animate UI chips</p>
+          <span class="tag tag-green">Tone.js Transport</span>
+        </div>
+        <div class="pipe-connector">→</div>
+        <div class="pipe-node">
+          <h4>🎤 Duet Loop</h4>
+          <p>User plays → AI answers → user responds → loop. Tracks full conversation history in phrase buffer</p>
+          <span class="tag tag-purple">H9+ feature</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box note">
+      <div class="icon">💡</div>
+      <div><strong>The key hack:</strong> Tone.js handles live MIDI with &lt;10ms latency. Gemini only runs when the user stops playing (idle trigger). This hybrid avoids the 2–5s generative model latency during live play entirely. Never call Gemini mid-phrase.</div>
+    </div>
+  </div>
+
+  <hr id="system-prompt">
+
+  <!-- SYSTEM PROMPT -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">2</div>
+      <h2>System Prompt — Paste First</h2>
+    </div>
+    <p class="section-desc">Set this as the system prompt in Gemini Studio or at the top of every new conversation. It establishes coding conventions, output format, and tech stack constraints so every subsequent prompt generates consistent, runnable code.</p>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label sys">SYSTEM PROMPT</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">You are an expert full-stack JavaScript developer building "Maestro Mode" — a real-time browser app that turns hand gestures into music using webcam + AI.
+
+TECH STACK (locked, do not deviate):
+- Frontend: Vanilla HTML/CSS/JS in a single file (no build tools)
+- Hand tracking: @mediapipe/hands v0.4 via jsdelivr CDN
+- Camera: @mediapipe/camera_utils via jsdelivr CDN
+- Object detection: @tensorflow/tfjs + @tensorflow-models/coco-ssd via jsdelivr CDN
+- Audio: Tone.js v14.8.49 via cdnjs.cloudflare.com
+- AI continuation: Gemini API (gemini-2.0-flash-exp) via fetch()
+- NO React, NO bundlers, NO npm in browser
+
+CODING STANDARDS:
+1. Every function must have a // purpose: one-line comment
+2. All async operations wrapped in try/catch with graceful fallback
+3. No global mutable state except the single `S` state object
+4. CSS uses :root variables, no inline hex colors except in canvas code
+5. Audio context starts ONLY on user gesture (Tone.start() in click handler)
+
+OUTPUT FORMAT:
+- When writing code: output the complete file, not snippets
+- When explaining: explain WHAT it does, WHY this approach, WHAT can go wrong
+- When debugging: reproduce minimal case first, then fix
+- Always include a // MILESTONE: H0-3 comment block at top of each section
+
+ARCHITECTURE RULES:
+- MediaPipe runs in onFrame callback — no blocking operations there
+- Gemini API called ONLY when idle timer fires (never mid-gesture)
+- Phrase buffer: max 20 notes, ring-buffer pattern
+- Canvas overlay must be positioned absolute, scaleX(-1) mirrored with video
+
+FALLBACK CHAIN:
+1. Gemini API fails → algorithmic continuation (scale-aware random walk)
+2. COCO-SSD fails → manual instrument select only  
+3. Camera denied → show keyboard fallback (A-K keys = notes)
+
+When I say "implement milestone H[X]-[Y]", generate the complete updated HTML file for that stage, preserving all previous milestone code.</div>
+    </div>
+
+    <div class="info-box tip">
+      <div class="icon">✓</div>
+      <div>After pasting the system prompt, send: <code>"Confirm you understand the stack and output a brief summary of what you'll build in each milestone."</code> — this validates Gemini absorbed the constraints before you start coding.</div>
+    </div>
+  </div>
+
+  <hr id="rag">
+
+  <!-- RAG PIPELINE -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num">3</div>
+      <h2>RAG Pipeline Design</h2>
+    </div>
+    <p class="section-desc">RAG makes Gemini smarter about MediaPipe landmarks, Tone.js API, and music theory without hallucinating. Two modes: Vertex AI RAG Engine (production) or local context injection (hackathon-fast).</p>
+
+    <div class="rag-flow">
+      <div class="rag-title">DOCUMENT INGESTION PIPELINE</div>
+      <div class="rag-row">
+        <div class="rag-box tag-blue">📄 Source Docs</div>
+        <div class="rag-arr">→</div>
+        <div class="rag-box tag-amber">✂ Chunker</div>
+        <div class="rag-arr">→</div>
+        <div class="rag-box tag-purple">🔢 Embeddings<br><small>text-embedding-004</small></div>
+        <div class="rag-arr">→</div>
+        <div class="rag-box tag-green">🗄 Vector Store<br><small>Vertex AI / Chroma</small></div>
+        <div class="rag-note">— one-time setup, ~10 min</div>
+      </div>
+      <div class="rag-title" style="margin-top:16px">QUERY PIPELINE (runtime)</div>
+      <div class="rag-row">
+        <div class="rag-box tag-amber">❓ User Prompt</div>
+        <div class="rag-arr">→</div>
+        <div class="rag-box tag-purple">🔢 Query Embed</div>
+        <div class="rag-arr">→</div>
+        <div class="rag-box tag-green">🔍 Top-K Retrieve<br><small>k=4, cosine sim</small></div>
+        <div class="rag-arr">→</div>
+        <div class="rag-box tag-blue">📋 Context Inject</div>
+        <div class="rag-arr">→</div>
+        <div class="rag-box tag-purple">🤖 Gemini</div>
+      </div>
+    </div>
+
+    <h3 style="font-size:14px;font-weight:600;margin:20px 0 10px">Documents to Ingest</h3>
+    <table class="tbl">
+      <thead><tr><th>Document</th><th>Source</th><th>Why it helps</th><th>Chunk size</th></tr></thead>
+      <tbody>
+        <tr><td><code>mediapipe-hands.md</code></td><td>MediaPipe docs → scrape or paste</td><td>Landmark indices, connection topology, confidence scores</td><td>400 tokens</td></tr>
+        <tr><td><code>tone-js-api.md</code></td><td>tonejs.github.io/docs</td><td>Synth types, envelope params, Transport scheduling</td><td>300 tokens</td></tr>
+        <tr><td><code>treehacks-maestro-writeup.md</code></td><td>Devpost writeup (public)</td><td>Original architecture decisions, what failed, what worked</td><td>200 tokens</td></tr>
+        <tr><td><code>music-theory-scales.md</code></td><td>Write yourself (5 min)</td><td>Scale note arrays, key mappings, chord structures</td><td>200 tokens</td></tr>
+        <tr><td><code>coco-ssd-classes.txt</code></td><td>TF.js model card</td><td>All 80 object class names → instrument mapping</td><td>100 tokens</td></tr>
+        <tr><td><code>web-audio-latency.md</code></td><td>MDN + Tone.js blog posts</td><td>AudioContext timing tricks, lookahead scheduling</td><td>300 tokens</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:14px;font-weight:600;margin:20px 0 10px">Option A — Hackathon Fast: Context Injection</h3>
+    <p class="section-desc" style="margin-bottom:12px">Skip the vector DB entirely. Paste your docs as a JSON blob in the system prompt. Works for &lt;32K tokens of docs.</p>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label rag">RAG CONTEXT INJECTION TEMPLATE</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body"># KNOWLEDGE BASE — Maestro Mode
+
+## MediaPipe Hands Quick Reference
+Landmark indices (21 total):
+- 0=WRIST, 1-4=THUMB(CMC,MCP,IP,TIP), 5-8=INDEX(MCP,PIP,DIP,TIP)
+- 9-12=MIDDLE, 13-16=RING, 17-20=PINKY
+- Landmark.x/y are normalized 0-1, NOT pixel coords → multiply by canvas.width/height
+- Pinch = dist(lm[4], lm[8]) < 0.06 (normalized units)
+- Fist = dist(lm[8], lm[0]) < 0.12
+- Wave = variance of lm[0].x over 10 frames > 0.004
+
+## Tone.js Patterns
+// CORRECT: schedule from transport
+Tone.Transport.scheduleOnce(time => synth.triggerAttack(note, time), "+0.01")
+
+// WRONG: call directly (causes timing drift)
+synth.triggerAttack(note, Tone.now()) // BAD for scheduled sequences
+
+// Instrument creation:
+const pluck = new Tone.PluckSynth({ attackNoise: 1.5, dampening: 4000, resonance: 0.98 }).toDestination()
+const poly  = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "triangle8" } }).toDestination()
+const mono  = new Tone.MonoSynth({ oscillator: { type: "sawtooth" } }).toDestination()
+const drum  = new Tone.MembraneSynth({ pitchDecay: 0.07, octaves: 5 }).toDestination()
+
+## Scale Arrays (C root)
+pentatonic: ["C","D","E","G","A"]
+major:      ["C","D","E","F","G","A","B"]
+minor:      ["C","D","Eb","F","G","Ab","Bb"]
+blues:      ["C","Eb","F","F#","G","Bb"]
+
+// Map Y coord (0=top=high, 1=bottom=low) to note:
+function yToNote(y, scale, octave) {
+  const span = 2; // octaves
+  const total = scale.length * span;
+  const idx = Math.floor((1 - y) * total);
+  return scale[idx % scale.length] + (octave + Math.floor(idx / scale.length));
+}
+
+## COCO-SSD → Instrument Map
+banana→guitar, bottle→guitar, book→piano, laptop→piano,
+cup→drums, bowl→drums, cell phone→synth, remote→theremin,
+wine glass→theremin, mouse→synth, pen→guitar, scissors→synth
+
+## Gemini Continuation API Pattern
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent
+Body: {
+  "contents": [{ "role": "user", "parts": [{ "text": "..." }] }],
+  "generationConfig": {
+    "temperature": 0.9,
+    "responseMimeType": "application/json",
+    "responseSchema": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "note": {"type": "string"},
+          "duration": {"type": "string", "enum": ["16n","8n","4n","2n"]},
+          "velocity": {"type": "number"}
+        }
+      }
+    }
+  }
+}</div>
+    </div>
+
+    <h3 style="font-size:14px;font-weight:600;margin:20px 0 10px">Option B — Production: Vertex AI RAG Engine</h3>
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label rag">VERTEX AI RAG SETUP PROMPT</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">Generate a complete Python script to set up a Vertex AI RAG Engine corpus for Maestro Mode.
+
+Requirements:
+- Project: [YOUR_PROJECT_ID]
+- Region: us-central1
+- Corpus name: "maestro-knowledge"
+- Embedding model: text-embedding-004
+- Upload these 6 local markdown files: mediapipe-hands.md, tone-js-api.md, treehacks-writeup.md, music-theory.md, coco-classes.txt, web-audio.md
+- Chunk size: 400 tokens, overlap: 40 tokens
+- After setup, write a retrieval function that takes a query string and returns top 4 chunks with similarity scores
+- Include a test: query "how do I detect pinch gesture" and print results
+
+Also write the Node.js client function that calls this RAG corpus from the frontend before each Gemini API call, injects top-2 chunks into the system instruction.
+
+Use the @google-cloud/vertexai npm package. Include full error handling and a cache layer (Map with 5-min TTL) so identical queries don't re-fetch.</div>
+    </div>
+  </div>
+
+  <hr id="stages">
+
+  <!-- H0-3 -->
+  <div class="section" id="h0">
+    <div class="section-header">
+      <div class="step-num" style="background:var(--green)">H1</div>
+      <h2>H0–3 · MediaPipe Hands → MIDI</h2>
+    </div>
+    <p class="section-desc">First 3 hours. Goal: webcam on screen, skeleton drawn on canvas, pinch triggers a beep. Nothing more. Ship this before touching audio complexity.</p>
+
+    <div class="milestones">
+      <div class="ms"><div class="ms-head"><span class="ms-time">0:00–0:45</span><span class="ms-title">Scaffold</span></div><div class="ms-desc">HTML shell, video element, canvas overlay, Tone.js CDN import, Tone.start() on button click</div></div>
+      <div class="ms"><div class="ms-head"><span class="ms-time">0:45–1:30</span><span class="ms-title">MediaPipe init</span></div><div class="ms-desc">Hands + Camera utils, onResults callback, draw skeleton on canvas</div></div>
+      <div class="ms"><div class="ms-head"><span class="ms-time">1:30–2:15</span><span class="ms-title">Gesture → note</span></div><div class="ms-desc">Pinch detection, yToNote function, Tone.js Synth triggerAttackRelease</div></div>
+      <div class="ms"><div class="ms-head"><span class="ms-time">2:15–3:00</span><span class="ms-title">Polish H0-3</span></div><div class="ms-desc">Note display, visual pinch feedback, FPS counter, verify &lt;15ms end-to-end</div></div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label user">PROMPT 1 — Scaffold + MediaPipe</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">Implement milestone H0-3: MediaPipe Hands → MIDI.
+
+Build a single HTML file with:
+
+1. STRUCTURE
+   - Full-screen layout: video behind canvas overlay
+   - "ACTIVATE CAMERA" button centered (this must trigger Tone.start())
+   - After activation: video + canvas visible, button hidden
+   - Bottom bar showing FPS counter, current note name, latency in ms
+
+2. MEDIAPIPE SETUP
+   - Load from CDN: https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js
+   - Load from CDN: https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js
+   - Options: maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.7
+   - locateFile must point to jsdelivr CDN (not local files)
+   - Camera: 1280x720
+
+3. HAND SKELETON
+   - Draw all 21 HAND_CONNECTIONS on canvas ctx
+   - Fingertips (indices 4,8,12,16,20) = 5px cyan dots
+   - Other joints = 2.5px dim dots
+   - Connection lines = 1.5px rgba(0,229,255,0.5)
+   - Canvas must be absolute positioned over video, both scaleX(-1) mirrored
+
+4. GESTURE DETECTION
+   - Pinch = Euclidean distance between lm[4] and lm[8] < 0.06
+   - Y of lm[0] (wrist) → pitch using pentatonic scale, 2 octave span, C4 root
+   - X of lm[0] → volume (0.3 to 1.0 range)
+   
+5. AUDIO
+   - Tone.js 14.8.49 from cdnjs
+   - Theremin mode: Synth with sine oscillator, portamento 0.08
+   - triggerAttack on pinch start, triggerRelease on pinch end
+   - frequency.rampTo() for smooth glide as hand moves
+
+6. STATE
+   - Single object S = { playing, lastNote, frameCount, lastFpsTime, fps }
+   - Update FPS display every second
+
+Output the complete HTML file. No snippets.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label user">PROMPT 1B — Debug Pinch Sensitivity</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">The pinch is triggering too easily / too hard. 
+
+Add a debug overlay that shows:
+- Live pinch distance value (normalized) as a number in top-left
+- A colored bar showing pinch distance (green = open, red = pinching)
+- The current threshold line on the bar
+- A console.log every time pinch state CHANGES (not every frame)
+
+Also add keyboard shortcuts:
+- "[" key = decrease threshold by 0.005
+- "]" key = increase threshold by 0.005
+- Current threshold shown in the debug overlay
+
+This will let me tune it live without changing code. Keep all existing functionality.</div>
+    </div>
+  </div>
+
+  <!-- H3-6 -->
+  <div class="section" id="h3">
+    <div class="section-header">
+      <div class="step-num" style="background:var(--blue)">H2</div>
+      <h2>H3–6 · Object Detection → Instrument Mapping</h2>
+    </div>
+    <p class="section-desc">Hours 3–6. Add COCO-SSD object detection, 5 instrument presets, and the object→instrument lookup. The banana-guitar moment lives here.</p>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label user">PROMPT 2 — Add 5 Instruments</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">Extend the H0-3 file. Implement milestone H3-6: 5 instruments + object detection.
+
+1. INSTRUMENT PRESETS (add to audio init, all connected to same reverb → delay chain)
+
+   theremin:  Tone.Synth { oscillator:{type:'sine'}, portamento:0.08 } → Vibrato → Chorus
+   guitar:    Tone.PluckSynth { attackNoise:1.5, dampening:4000, resonance:0.98 }
+   piano:     Tone.PolySynth(Tone.Synth, { oscillator:{type:'triangle8'}, envelope:{attack:0.02,decay:0.9,sustain:0.2,release:2} })
+   synth:     Tone.MonoSynth { oscillator:{type:'sawtooth'}, filterEnvelope:{baseFrequency:200,octaves:5} }
+   drums:     Tone.MembraneSynth { pitchDecay:0.07, octaves:5 }
+
+   FX chain: all → Tone.Reverb({decay:2.5,wet:0.3}) → Tone.FeedbackDelay({delayTime:'8n',feedback:0.25}) → toDestination()
+
+2. GESTURE DIFFERENCES PER INSTRUMENT
+   - theremin: continuous note tracking (existing behavior)
+   - guitar: pinch triggers PluckSynth.triggerAttackRelease(note, '8n')
+   - piano:  pinch triggers PolySynth.triggerAttackRelease(note, '4n')
+   - synth:  pinch triggers, X position opens/closes filter (map X to filterFrequency 200-4000Hz)
+   - drums:  wrist velocity > 0.015 change/frame triggers kick on C1
+
+3. COCO-SSD INTEGRATION
+   Load: https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js
+   Load: https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js
+   
+   - Load cocoSsd.load({base:'lite_mobilenet_v2'}) async after camera starts
+   - Run detection EVERY 2500ms via setInterval (not per frame — too slow)
+   - OBJ_MAP = { banana:'guitar', bottle:'guitar', 'wine glass':'theremin', book:'piano', laptop:'piano', cup:'drums', bowl:'drums', 'cell phone':'synth', remote:'theremin', mouse:'synth' }
+   - When object detected AND in OBJ_MAP: auto-select that instrument, show badge "🎸 BANANA → GUITAR"
+   - Badge animates in with CSS transition, stays for 3s then fades
+
+4. LEFT PANEL UI
+   - 5 instrument buttons, active state highlighted cyan
+   - 4 scale buttons (pentatonic/major/minor/blues)
+   - Octave +/- controls (range: 2–6)
+   - Detected object display
+
+5. SCALE SELECTOR
+   - Active scale drives yToNote()
+   - When scale changes mid-play, update immediately (no glitching)
+
+Preserve all H0-3 code. Output complete file.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label fn">PROMPT 2B — RAG-Enhanced Object Map</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">The COCO-SSD object map only covers ~15 objects. Expand it using Gemini's knowledge.
+
+Generate a JavaScript object OBJ_MAP that covers ALL 80 COCO-SSD class names mapped to one of: 'guitar', 'piano', 'synth', 'theremin', 'drums'.
+
+Mapping logic (think about this musically):
+- Long/thin objects (baseball bat, tennis racket, fork, knife, tie) → guitar (strummed)
+- Flat/horizontal objects (laptop, book, dining table, mouse) → piano (keyed)
+- Small round objects (sports ball, orange, apple, clock) → drums (percussive)
+- Fluid/wavy objects (bottle, wine glass, vase, cup) → theremin (poured/wavered)
+- Electronic/complex objects (cell phone, remote, keyboard, tv) → synth (digital)
+- Everything else → default to theremin
+
+Output ONLY the JavaScript object literal, no explanation. Format:
+const OBJ_MAP = {
+  'person': 'theremin',
+  'bicycle': 'synth',
+  ...all 80 classes...
+};</div>
+    </div>
+  </div>
+
+  <!-- H6-9 -->
+  <div class="section" id="h6">
+    <div class="section-header">
+      <div class="step-num" style="background:var(--purple)">H3</div>
+      <h2>H6–9 · Gemini AI Continuation</h2>
+    </div>
+    <p class="section-desc">Hours 6–9. The showstopper feature. When the user stops playing, Gemini listens to their phrase and continues it. Uses Gemini's structured output (responseSchema) to get clean JSON back.</p>
+
+    <div class="info-box warn">
+      <div class="icon">⚠</div>
+      <div>Use <code>responseMimeType: "application/json"</code> with a <code>responseSchema</code> to get structured note arrays. Do NOT try to parse free-text note names — Gemini will hallucinate formats. Structured output is the only reliable approach here.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label user">PROMPT 3 — Gemini Continuation Engine</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">Add the Gemini AI continuation system to the H3-6 file.
+
+1. PHRASE BUFFER
+   const phraseBuffer = []; // max 20 entries
+   Each entry: { note: "C4", velocity: 0.8, timestamp: relativeMs }
+   
+   recordNote(note, vel) function:
+   - Throttled: max 1 call per 160ms (prevents flooding from theremin)
+   - Appends to phraseBuffer, shifts oldest if length > 20
+   - Resets idle timer
+   - Updates phrase chip display in right panel
+
+2. IDLE TRIGGER
+   - lastNoteTime = Date.now() on each recordNote call
+   - clearTimeout + setTimeout(triggerGemini, S.aiDelay * 1000) on each recordNote
+   - S.aiDelay default 2.0, configurable by slider in right panel (1.0–5.0s)
+   - Don't trigger if phraseBuffer.length < 3 or if AI is currently playing
+
+3. GEMINI API CALL
+   API key from: const GEMINI_KEY = document.getElementById('api-key-input').value
+   (Add a settings field for this — never hardcode)
+   
+   Endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_KEY}
+   
+   Request body:
+   {
+     "contents": [{
+       "role": "user",
+       "parts": [{
+         "text": "You are a real-time musical AI companion. The human just played: [PHRASE]. Instrument: [INST], Scale: [SCALE]. Continue their musical phrase with 6-10 notes. Be musical and responsive."
+       }]
+     }],
+     "generationConfig": {
+       "temperature": 0.85,
+       "maxOutputTokens": 300,
+       "responseMimeType": "application/json",
+       "responseSchema": {
+         "type": "ARRAY",
+         "items": {
+           "type": "OBJECT",
+           "properties": {
+             "note": { "type": "STRING", "description": "Standard note name e.g. C4, F#3, Bb5" },
+             "duration": { "type": "STRING", "enum": ["16n", "8n", "4n", "2n"] },
+             "velocity": { "type": "NUMBER" }
+           },
+           "required": ["note", "duration", "velocity"]
+         }
+       }
+     }
+   }
+   
+   Format phrase as: "C4(v=0.8)@0ms, E4(v=0.6)@300ms, G4(v=0.9)@600ms"
+
+4. PLAYBACK
+   const DURATIONS = { '16n': 150, '8n': 300, '4n': 600, '2n': 1200 };
+   
+   playAIPhrase(notes):
+   - For each note at cumulative delay:
+     setTimeout(() => {
+       playNote(note.note, note.velocity, note.duration);
+       spawnParticle(centerX + spread, centerY, note.note);  // visual feedback
+       highlightChip(i);
+     }, delay)
+   - After all notes + 600ms: set S.aiPlaying = false, updateAIStatus('listening')
+   
+   FALLBACK if Gemini fails or no API key:
+   - genAlgorithmic(): random walk on current scale, 7 notes, log-normal velocity
+   - Show "ALGO FALLBACK" badge
+
+5. RIGHT PANEL UI
+   - AI status dot with states: idle (gray), listening (green pulse), thinking (amber fast), playing (violet)
+   - "YOUR PHRASE" chips: small colored boxes per note, max 16 visible
+   - "AI RESPONSE" chips: violet colored, highlight as each note plays
+   - "▶ TRIGGER AI" button + "↺ CLEAR" button
+   - API key input field (type="password")
+   - Notes played counter, session timer
+
+6. AI OVERLAY
+   When Gemini is thinking: dim cyan border on video, show "AI COMPOSING..." centered text
+
+Output complete updated file. Test the API call format against the Gemini API spec.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label fn">PROMPT 3B — Better Musical Prompt Engineering</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">The AI continuation sounds random. Improve the Gemini prompt using music theory.
+
+Rewrite the buildGeminiPrompt(phraseBuffer, instrument, scale, octave) function.
+
+The prompt should include:
+1. PHRASE ANALYSIS (compute before calling Gemini):
+   - Detect the melodic direction: ascending, descending, or oscillating (compare first vs last 3 notes)
+   - Detect rhythm pattern: even (all same duration), dotted, syncopated
+   - Compute average velocity and velocity arc (building, fading, flat)
+
+2. MUSICAL CONTEXT in the prompt string:
+   - Tell Gemini the melodic direction detected
+   - Tell Gemini the rhythmic feel
+   - Give a musical instruction: "continue the ascending phrase" / "answer the question phrase" / "resolve the tension"
+   - Specify: stay in [SCALE] scale, root C, use octaves [OCT-1] to [OCT+1]
+
+3. INSTRUMENT-SPECIFIC INSTRUCTIONS:
+   - guitar: "use short 8n notes with pluck attack, mix with 16n ornaments"
+   - piano: "can use octave jumps, mix 4n melody with 8n countermelody"
+   - theremin: "smooth gliding notes, prefer 4n and 2n durations, avoid large jumps"
+   - synth: "rhythmic 8n pattern, can use repeated notes for groove"
+   - drums: "all notes on C1 or C2, focus on 8n and 16n rhythm"
+
+4. CONVERSATION HISTORY:
+   Keep last 2 AI responses in memory and include them in context:
+   "Previous AI continuation: [notes]. Don't repeat this pattern."
+
+Return the complete buildGeminiPrompt function that produces the best possible musical context string.</div>
+    </div>
+  </div>
+
+  <!-- H9-12 -->
+  <div class="section" id="h9">
+    <div class="section-header">
+      <div class="step-num" style="background:var(--amber)">H4</div>
+      <h2>H9–12 · Duet Mode + Demo Polish</h2>
+    </div>
+    <p class="section-desc">Final 3 hours. Duet loop, particle effects, the broom-guitar reveal moment, and a deployable output. Cut features ruthlessly if behind schedule.</div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label user">PROMPT 4 — Duet Loop + Particles</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">Add duet mode and visual polish to the H6-9 file.
+
+1. DUET MODE
+   - Track "conversation turns": user plays → AI responds → user plays → AI responds
+   - conversationHistory = [{ role:'user', notes:[] }, { role:'ai', notes:[] }, ...]
+   - After AI plays, it listens for user again (S.aiPlaying = false resets this)
+   - Right panel shows turn counter: "TURN 1 — YOUR MOVE" / "TURN 2 — AI RESPONSE"
+   - Include last AI phrase in Gemini context: "In your last turn you played X. Now continue the dialogue."
+   - Add "DUET MODE" toggle button (enables conversation history tracking)
+
+2. PARTICLE SYSTEM
+   Canvas-based, runs in the same overlay canvas as skeleton.
+   Particle = { x, y, vx, vy, life, size, color, label }
+   
+   spawnParticle(x, y, note):
+   - 3 particles per note
+   - Color based on note class: C=hsl(185), D=hsl(205), E=hsl(225), F=hsl(245), G=hsl(265), A=hsl(285), B=hsl(305)
+   - First particle gets note label text (e.g. "C4"), others are plain circles
+   - vx: random ±2.5, vy: -1.5 to -4.5 (float up)
+   - life: starts 1.0, decreases 0.022 per frame
+   - size: 4 to 11px random
+   - Draw in main animation loop, globalAlpha = particle.life
+
+3. WAVEFORM VISUALIZER
+   Tone.Waveform(512) analyzer connected to destination.
+   drawWaveform() called in rAF loop:
+   - Get data: analyzer.getValue() returns Float32Array -1 to 1
+   - Draw as line on bottom bar canvas (50px height)
+   - Color: rgba(0,229,255,0.9) when playing, rgba(0,229,255,0.2) when silent
+   - Add a "glow" second pass: lineWidth=6, rgba(0,229,255,0.1)
+
+4. VOLUME BARS (5 bars in header)
+   Tone.Meter analyzer. Each rAF: meter.getValue() → map to 5 bar heights.
+   Bars animate with CSS transition height 0.05s.
+   Color: green below 0.5, amber 0.5-0.75, red above 0.75.
+
+5. DEMO SEQUENCE (keyboard shortcut D)
+   Press D triggers an automated demo:
+   - Step 1: Display "HOLD ANY OBJECT" for 2s
+   - Step 2: Pretend to detect "banana" (fire fake detection with banana→guitar mapping) 
+   - Step 3: Play a canned 8-note guitar riff via Tone.js
+   - Step 4: After 4s, trigger AI continuation
+   - Step 5: Show "🎸 DUET MODE ACTIVE"
+   This is for the broom/banana reveal moment in demos.
+
+Output complete final file.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label user">PROMPT 4B — Deploy Prep</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">Prepare the final file for deployment.
+
+1. ENVIRONMENT CONFIG
+   Add a config block at the top of the script:
+   const CONFIG = {
+     geminiApiKey: window.GEMINI_KEY || '',  // set via URL param ?key=xxx
+     aiDelay: 2.0,
+     maxPhraseLen: 20,
+     pinchThreshold: 0.065,
+     debugMode: window.location.search.includes('debug')
+   };
+   
+   On page load: read ?key= from URL params and pre-fill CONFIG.geminiApiKey
+   (safer than embedding in HTML for demos)
+
+2. ERROR STATES UI
+   Add visible error states:
+   - Camera denied: show "CAMERA BLOCKED — check browser permissions" with icon
+   - MediaPipe load failed: show "MODEL LOAD FAILED — check internet connection"
+   - Gemini API error 429: show "RATE LIMITED — using algorithmic mode"
+   - Gemini API error 400: show "API KEY INVALID"
+
+3. PERFORMANCE OPTIMIZATIONS
+   - Throttle COCO-SSD to only run when S.handDetected === true
+   - Skip skeleton draw if hand confidence < 0.8
+   - Use requestAnimationFrame correctly (single rAF loop for everything)
+   - Dispose old synths when switching instruments: oldSynth.dispose()
+
+4. SHARING
+   Add "SHARE SESSION" button:
+   - Encodes session stats (notes played, session time, instruments used, AI turns) as URL params
+   - e.g. ?share=notes:47,time:3:24,insts:guitar+piano,turns:6
+   - Shows a shareable URL the user can copy
+
+5. FINAL CHECKLIST
+   Verify and fix if broken:
+   [ ] Camera starts reliably in Chrome, Firefox, Safari
+   [ ] Audio works on mobile (requires touch to start)
+   [ ] No console errors in production
+   [ ] Works at 720p and 1080p
+   [ ] AI continuation fires within 3s of user stopping</div>
+    </div>
+  </div>
+
+  <hr id="debug">
+
+  <!-- DEBUG PROMPTS -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num" style="background:var(--red)">!</div>
+      <h2>Debug Prompts — When Things Break</h2>
+    </div>
+    <p class="section-desc">Copy-paste these when you hit specific bugs. Each one gives Gemini enough context to fix without you having to explain the whole codebase.</p>
+
+    <table class="tbl">
+      <thead><tr><th>Bug</th><th>Symptom</th><th>Use prompt</th></tr></thead>
+      <tbody>
+        <tr><td>MediaPipe WASM fails to load</td><td>"TypeError: Cannot read properties of undefined (reading 'hands')"</td><td>DBG-01</td></tr>
+        <tr><td>Audio clicks/pops on note change</td><td>Audible click every pinch</td><td>DBG-02</td></tr>
+        <tr><td>Gemini returns invalid JSON</td><td>SyntaxError on parse</td><td>DBG-03</td></tr>
+        <tr><td>Hand skeleton drifts/lags</td><td>Skeleton 200ms behind hand</td><td>DBG-04</td></tr>
+        <tr><td>COCO-SSD memory leak</td><td>RAM grows unbounded</td><td>DBG-05</td></tr>
+      </tbody>
+    </table>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label fn">DBG-01 — MediaPipe WASM Load Failure</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">MediaPipe Hands is failing to load with: "TypeError: Cannot read properties of undefined"
+
+The issue is usually one of: wrong CDN URL, locateFile not pointing to CDN, or script loading order.
+
+Fix the initialization code. Requirements:
+1. Scripts must load in ORDER: Tone.js first, then TF.js, then MediaPipe Hands, then Camera Utils
+2. locateFile MUST be: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+3. The Hands object cannot be created until the script is fully loaded — wrap in DOMContentLoaded or load event
+4. Camera.start() must not be called until hands.onResults is set
+5. Add a loading state: show "LOADING MODELS..." until both MediaPipe and COCO-SSD are ready
+
+Show the correct script tag order and initialization sequence. Include a diagnostic: if hands fails to load after 10s, show an error message with the exact CDN URL that failed.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label fn">DBG-02 — Audio Clicking/Popping</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">The audio is clicking and popping every time a new note triggers.
+
+This is caused by abrupt parameter changes in the Web Audio graph. Fix:
+
+1. For theremin (continuous): use frequency.rampTo(freq, 0.06) NOT direct set. Use volume.rampTo() for volume changes. NEVER call triggerAttack twice without triggerRelease.
+
+2. For piano/guitar (triggered): add a tiny release time to the envelope (release: 0.15 minimum). For PolySynth, call triggerAttackRelease not triggerAttack+triggerRelease separately.
+
+3. For note transitions: if the same note fires within 80ms, skip the second trigger (debounce at instrument level, not just phrase level).
+
+4. For instrument switching: when S.inst changes, call oldSynth.releaseAll() if it's a PolySynth, oldSynth.triggerRelease() otherwise. Then wait 100ms before activating new synth.
+
+Show the fixed audio initialization and note-playing code. Include a click test: play C4 at 120bpm for 8 beats and verify no clicks.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label fn">DBG-03 — Gemini JSON Parse Error</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">Gemini is returning invalid JSON for the note continuation. Error: "SyntaxError: Unexpected token"
+
+Write a robust parseGeminiResponse(rawText) function that:
+
+1. PRIMARY: Try JSON.parse(rawText) directly (works if responseMimeType was set correctly)
+2. FALLBACK 1: Strip markdown fences: rawText.replace(/```json|```/g, '').trim()
+3. FALLBACK 2: Extract first JSON array with regex: rawText.match(/\[[\s\S]*\]/)?.[0]
+4. FALLBACK 3: Extract first JSON object and wrap in array
+5. VALIDATION: After parsing, validate each note has { note: string, duration: string, velocity: number }. Filter out invalid entries. If note name is invalid (not matching /^[A-G][#b]?[2-7]$/), skip it.
+6. FINAL FALLBACK: If all parsing fails, return genAlgorithmic() result and log the raw response
+
+Also: make sure the Gemini request uses:
+"generationConfig": { "responseMimeType": "application/json", "responseSchema": {...} }
+With the schema defined — this is the only reliable way to get structured output.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label fn">DBG-04 — Skeleton Lag / Drift</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">The hand skeleton is visibly lagging 100-200ms behind the actual hand position.
+
+The cause is typically: canvas resize happening every frame, or blocking operations in onFrame.
+
+Fix:
+1. Canvas resize: only call canvas.width = canvas.offsetWidth when the window resizes (ResizeObserver), NOT in every onResults call. Cache W and H.
+2. onFrame callback: must be async and await hands.send({image: videoElement}) — nothing else. No DOM updates here.
+3. onResults callback: all DOM updates should be batched and only fire if value changed by >threshold. E.g., only update FPS display if fps changed.
+4. Canvas draw calls: use ctx.save()/restore() minimally. Don't create new Path2D objects every frame — reuse.
+5. MediaPipe model complexity: if on slower device, drop to modelComplexity: 0 and show FPS warning if below 20fps.
+
+Add a latency measurement: timestamp when onFrame fires vs when onResults fires, display delta in ms.</div>
+    </div>
+
+    <div class="prompt-card">
+      <div class="prompt-header">
+        <span class="prompt-label fn">DBG-05 — COCO-SSD Memory Leak</span>
+        <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+      </div>
+      <div class="prompt-body">The page is leaking memory over time. Chrome DevTools shows heap growing ~5MB/minute.
+
+The cause is TensorFlow.js tensors not being disposed after each COCO-SSD inference.
+
+Fix:
+1. Wrap each cocoModel.detect() call in tf.tidy(() => ...) to auto-dispose intermediate tensors
+2. Or manually: const predictions = await cocoModel.detect(videoElement); ... then predictions.forEach(p => { if (p.bbox) tf.dispose(p.bbox); });
+3. The video element passed to detect() should NOT be a canvas (extra texture allocation) — pass the raw <video> element
+4. setInterval for detection: clear and reset if component unmounts or camera stops
+5. Add memory monitoring: every 30s log tf.memory().numTensors to console. Should be stable after warm-up.
+
+Also reduce detection frequency to every 3000ms instead of 2500ms to reduce GPU pressure.</div>
+    </div>
+  </div>
+
+  <!-- GEMINI-SPECIFIC TIPS -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-num" style="background:var(--cyan)">★</div>
+      <h2>Gemini-Specific Tips</h2>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Technique</th><th>How to use it</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Code Execution</strong></td><td>Enable in Gemini Studio settings. Add "Run this in Code Execution and show output" to any prompt with algorithms or data structures.</td><td>Testing note mapping, scale arrays, pinch math</td></tr>
+        <tr><td><strong>Grounding</strong></td><td>Enable Google Search grounding. Add "Search for the latest MediaPipe Hands API docs before answering." for version-specific questions.</td><td>CDN URL verification, API changes</td></tr>
+        <tr><td><strong>File Upload</strong></td><td>Upload your current HTML file + error screenshot. "Here is my current code and the console error. Fix it." Much faster than pasting 600 lines.</td><td>Any bug that needs context</td></tr>
+        <tr><td><strong>Multimodal Debug</strong></td><td>Screenshot your webcam output. "The skeleton is drawing in the wrong position — here's a screenshot. Fix the coordinate math."</td><td>Canvas positioning bugs</td></tr>
+        <tr><td><strong>Temperature 0 for Code</strong></td><td>Set temperature to 0 when asking for code generation. Use temperature 0.9 only for the musical AI prompt inside the app.</td><td>Consistency across code edits</td></tr>
+        <tr><td><strong>Ask for diff, not full file</strong></td><td>Once past H3, say "show only the changed functions, not the full file" to save context window for debugging.</td><td>H6+ iterations</td></tr>
+      </tbody>
+    </table>
+
+    <div class="info-box note">
+      <div class="icon">📌</div>
+      <div><strong>Context window strategy:</strong> Start fresh conversation for each milestone (H0-3, H3-6, etc.). Paste only the relevant section of your current file + the system prompt. Long contexts cause Gemini to start forgetting early instructions. Use the RAG knowledge base to replace repetitive technical context.</div>
+    </div>
+
+    <div class="info-box tip">
+      <div class="icon">✓</div>
+      <div><strong>Best prompt for "make it work":</strong> <em>"Here is my file. Here is the exact console error with stack trace. Here is what I expect to happen vs what actually happens. Fix only the broken part, don't refactor anything else."</em> — This is faster than any clever prompt engineering.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function copyPrompt(btn) {
+  const body = btn.closest('.prompt-card').querySelector('.prompt-body');
+  navigator.clipboard.writeText(body.innerText).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+</body>
+</html>
