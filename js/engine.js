@@ -36,20 +36,20 @@ export class InstrumentEngine {
   }
 
   async init(onProgress) {
-    // Effects chain: reverb + master volume
-    this._vol   = new Tone.Volume(-3).toDestination();
-    this._reverb= new Tone.Reverb({ decay: 2.2, wet: 0.22 }).connect(this._vol);
-    this._delay = new Tone.FeedbackDelay('8n', 0.12).connect(this._vol);
+    // Effects chain: light reverb only (no delay = lower latency)
+    this._vol   = new Tone.Volume(-2).toDestination();
+    this._reverb= new Tone.Reverb({ decay: 1.0, wet: 0.08 }).connect(this._vol);
 
-    // Built-in synths (instant, no loading)
+    // Built-in synths (instant, no loading) – faster attack for responsiveness
     this.builtins.synth = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: 'sawtooth4' },
-      envelope: { attack: 0.015, decay: 0.4, sustain: 0.35, release: 1.0 },
+      envelope: { attack: 0.008, decay: 0.35, sustain: 0.25, release: 0.6 },
+      maxNotes: 12,
     }).connect(this._reverb);
 
     this.builtins.kick = new Tone.MembraneSynth({
-      pitchDecay: 0.07, octaves: 9,
-      envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 },
+      pitchDecay: 0.05, octaves: 9,
+      envelope: { attack: 0.001, decay: 0.25, sustain: 0, release: 0.08 },
     }).connect(this._vol);
 
     this.builtins.snare = new Tone.NoiseSynth({
@@ -93,7 +93,8 @@ export class InstrumentEngine {
     const freq     = Tone.Frequency(midiNote, 'midi');
     const noteName = freq.toNote();
     const normVel  = Math.max(0.01, velocity / 127);
-    const t        = `+${(delayMs / 1000).toFixed(3)}`;
+    // Use Tone.immediate for zero-latency scheduling
+    const t        = delayMs === 0 ? Tone.immediate : `+${(delayMs / 1000).toFixed(3)}`;
     const dur      = `${(durationMs / 1000).toFixed(3)}`;
 
     // Log for AI continuation

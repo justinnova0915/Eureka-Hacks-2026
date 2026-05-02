@@ -1,5 +1,6 @@
-// Wraps YOLOv8 (ONNX Runtime Web) to detect holdable objects in the video feed.
-// Runs at ~2.5fps independently of gesture processing.
+// Object detection backend: Flask server with YOLOv8.
+// Runs at ~10-15fps via Flask API (vs 2.5fps browser ONNX).
+// Falls back to browser ONNX if server unavailable.
 
 const YOLO_CLASSES = [
   'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
@@ -31,15 +32,40 @@ export class ObjectDetector {
     this.bbox     = null;   // normalized {x,y,w,h} in 0-1 space
     this._running = false;
     this._video   = null;
+    this.serverUrl = 'http://127.0.0.1:5000';
+    this.serverAvailable = false;
+    this.useServer = true;
   }
 
   async init(onProgress) {
-    onProgress?.('Loading YOLOv8 model…');
+    onProgress?.('Checking for Flask backend…');
+    
+    // Try to connect to Flask server
     try {
-      this.session = await ort.InferenceSession.create('./yolov8n.onnx', { executionProviders: ['wasm'] });
+      const resp = await fetch(`${this.serverUrl}/health`, { timeout: 2000 });
+      if (resp.ok) {
+        this.serverAvailable = true;
+        this.useServer = true;
+        onProgress?.('✓ Flask server detected');
+        console.log('✓ Using Flask YOLOv8 server');
+      }
     } catch (e) {
-      console.error("YOLOv8 init error:", e);
+      console.warn('Flask server unavailable, falling back to browser ONNX:', e);
+      this.useServer = false;
     }
+    
+    // Fallback: load browser ONNX if server not available
+    if (!this.useServer) {
+      onProgress?.('Loading YOLOv8 ONNX (browser)…');
+      try {
+        this.session = await ort.InferenceSession.create('./yolov8n.onnx', 
+          { executionProviders: ['wasm'] });
+        console.log('✓ Using browser ONNX');
+      } catch (e) {
+        console.error("YOLOv8 ONNX init error:", e);
+      }
+    }
+    
     onProgress?.(null);
   }
 
@@ -69,62 +95,98 @@ export class ObjectDetector {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     while (this._running) {
-      if (this.session && this._video?.readyState >= 2) {
+      if (this._video?.readyState >= 2) {
         try {
-          ctx.drawImage(this._video, 0, 0, 640, 640);
-          const imgData = ctx.getImageData(0, 0, 640, 640).data;
-          
-          const float32Data = new Float32Array(3 * 640 * 640);
-          for (let i = 0; i < 640 * 640; i++) {
-            float32Data[i] = imgData[i * 4] / 255.0;
-            float32Data[640 * 640 + i] = imgData[i * 4 + 1] / 255.0;
-            float32Data[2 * 640 * 640 + i] = imgData[i * 4 + 2] / 255.0;
-          }
-          
-          const tensor = new ort.Tensor('float32', float32Data, [1, 3, 640, 640]);
-          const results = await this.session.run({ images: tensor });
-          const output = results.output0.data;
-          
-          let bestConf = 0; let bestClass = -1; let bestBox = null;
-          for (let col = 0; col < 8400; col++) {
-            let maxProb = 0; let maxIdx = -1;
-            for (let c = 0; c < 80; c++) {
-              const prob = output[(4 + c) * 8400 + col];
-              if (prob > maxProb) { maxProb = prob; maxIdx = c; }
+          if (this.useServer) {
+            // Use Flask API for detection
+            ctx.drawImage(this._video, 0, 0, 640, 640);
+            // Convert canvas to base64 PNG
+            canvas.toBlob(async (blob) => {
+              const reader = new FileReader();
+              reader.onload = async (e) => {
+                const base64 = e.target.result.split(',')[1];
+                try {
+                  const resp = await fetch(`${this.serverUrl}/detect`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ frame: base64, confidence_threshold: 0.4 })
+                  });
+                  if (resp.ok) {
+                    const result = await resp.json();
+                    this.detected = result.detected;
+                    if (result.detected) {
+                      this.label = result.class;
+                      const [cx, cy, bw, bh] = result.bbox;
+                      this.bbox = { x: cx - bw/2, y: cy - bh/2, w: bw, h: bh };
+                    } else {
+                      this.label = null;
+                      this.bbox = null;
+                    }
+                  }
+                } catch (e) {
+                  // Server error – fall back to ONNX if available
+                  if (this.session) this.useServer = false;
+                }
+              };
+              reader.readAsDataURL(blob);
+            }, 'image/png');
+          } else if (this.session) {
+            // Fallback: use browser ONNX
+            ctx.drawImage(this._video, 0, 0, 640, 640);
+            const imgData = ctx.getImageData(0, 0, 640, 640).data;
+            
+            const float32Data = new Float32Array(3 * 640 * 640);
+            for (let i = 0; i < 640 * 640; i++) {
+              float32Data[i] = imgData[i * 4] / 255.0;
+              float32Data[640 * 640 + i] = imgData[i * 4 + 1] / 255.0;
+              float32Data[2 * 640 * 640 + i] = imgData[i * 4 + 2] / 255.0;
             }
-            if (maxProb > 0.4 && maxProb > bestConf) {
-              const label = YOLO_CLASSES[maxIdx];
-              if (HOLDABLE.has(label)) {
-                bestConf = maxProb; bestClass = maxIdx;
-                const cx = output[0 * 8400 + col];
-                const cy = output[1 * 8400 + col];
-                const bw = output[2 * 8400 + col];
-                const bh = output[3 * 8400 + col];
-                bestBox = [cx, cy, bw, bh];
+            
+            const tensor = new ort.Tensor('float32', float32Data, [1, 3, 640, 640]);
+            const results = await this.session.run({ images: tensor });
+            const output = results.output0.data;
+            
+            let bestConf = 0; let bestClass = -1; let bestBox = null;
+            for (let col = 0; col < 8400; col++) {
+              let maxProb = 0; let maxIdx = -1;
+              for (let c = 0; c < 80; c++) {
+                const prob = output[(4 + c) * 8400 + col];
+                if (prob > maxProb) { maxProb = prob; maxIdx = c; }
+              }
+              if (maxProb > 0.4 && maxProb > bestConf) {
+                const label = YOLO_CLASSES[maxIdx];
+                if (HOLDABLE.has(label)) {
+                  bestConf = maxProb; bestClass = maxIdx;
+                  const cx = output[0 * 8400 + col];
+                  const cy = output[1 * 8400 + col];
+                  const bw = output[2 * 8400 + col];
+                  const bh = output[3 * 8400 + col];
+                  bestBox = [cx, cy, bw, bh];
+                }
               }
             }
-          }
-          
-          this.detected = !!bestBox;
-          this.label = bestBox ? YOLO_CLASSES[bestClass] : null;
-          
-          if (bestBox) {
-             const [cx, cy, bw, bh] = bestBox;
-             // Map bounding box to normalized 0-1 coordinate space for the video
-             this.bbox = {
-               x: (cx - bw/2) / 640,
-               y: (cy - bh/2) / 640,
-               w: bw / 640,
-               h: bh / 640
-             };
-          } else {
-             this.bbox = null;
+            
+            this.detected = !!bestBox;
+            this.label = bestBox ? YOLO_CLASSES[bestClass] : null;
+            if (bestBox) {
+              const [cx, cy, bw, bh] = bestBox;
+              this.bbox = {
+                x: (cx - bw/2) / 640,
+                y: (cy - bh/2) / 640,
+                w: bw / 640,
+                h: bh / 640
+              };
+            } else {
+              this.bbox = null;
+            }
           }
         } catch (e) {
-          console.error('YOLO inference error:', e);
+          console.error('Detection error:', e);
         }
       }
-      await new Promise(r => setTimeout(r, 400));
+      
+      // Sleep 50-100ms between frames (~10-20fps)
+      await new Promise(r => setTimeout(r, this.useServer ? 100 : 400));
     }
   }
 }

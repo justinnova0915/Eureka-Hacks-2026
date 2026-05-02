@@ -85,15 +85,29 @@ async function boot() {
   detector.addEventListener('gesture', onGesture);
   detector.addEventListener('idle',    onIdle);
 
+  let cameraReady = false;
   try {
     await detector.start();
     objDetector.start(webcamEl);
+    cameraReady = true;
+    console.log('✓ Camera started');
   } catch (e) {
-    loadingStatus.textContent = 'Camera unavailable – click to start audio only';
+    console.warn('Camera access denied:', e);
+    // Still allow app to run without camera
+    loadingStatus.textContent = '✓ Ready (camera unavailable)';
+    cameraReady = false;
   }
 
+  // Always transition to main app, with or without camera
   loadingScreen.style.opacity = '0';
-  setTimeout(() => { loadingScreen.style.display = 'none'; appEl.classList.remove('hidden'); }, 420);
+  setTimeout(() => { 
+    loadingScreen.style.display = 'none'; 
+    appEl.classList.remove('hidden');
+    if (!cameraReady) {
+      camHint.textContent = 'Camera unavailable – audio-only mode. Check browser permissions.';
+      camHint.style.color = '#ef4444';
+    }
+  }, 420);
 
   initViz();
   updateScaleLabel();
