@@ -35,8 +35,7 @@ body {
 .loader-content { text-align: center; }
 .logo-gradient {
   font-size: 3rem; font-weight: 800;
-  background: linear-gradient(135deg, var(--accent), var(--cyan));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  color: var(--accent);
   margin-bottom: 1rem;
 }
 #loading-status { color: var(--dim); font-size: 0.9rem; margin-bottom: 0.75rem; }
@@ -47,7 +46,7 @@ body {
 }
 #progress-fill {
   height: 100%; width: 0%;
-  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  background: var(--accent);
   transition: width 0.3s ease;
 }
 .loader-hint { font-size: 0.75rem; color: var(--dim); }
@@ -66,8 +65,7 @@ header {
 }
 #logo {
   font-size: 1.3rem; font-weight: 700; margin-right: auto;
-  background: linear-gradient(135deg, var(--accent), var(--cyan));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  color: var(--accent);
 }
 
 .badge {

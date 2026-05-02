@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YOLOv8 Simple Web Test</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #111; color: #fff; }
+    canvas { border: 1px solid #333; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>YOLOv8 Simple Web Test</h1>
+  <p>Loads YOLOv8 ONNX model and runs inference on an image.</p>
+  <input type="file" id="image-upload" accept="image/*" />
+  <div id="status">Status: Waiting for image...</div>
+  <canvas id="canvas"></canvas>
+
+  <!-- Load ONNX Runtime Web -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusDiv = document.getElementById('status');
+    const inputUpload = document.getElementById('image-upload');
+
+    // YOLOv8 class labels
+    const yoloClasses = [
+      'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+      'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+      'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+      'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+      'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+      'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+      'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+      'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
+      'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book',
+      'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    ];
+
+    let session;
+
+    async function loadModel() {
+      statusDiv.innerText = "Status: Loading YOLOv8 ONNX model...";
+      try {
+        session = await ort.InferenceSession.create('./yolov8n.onnx', { executionProviders: ['wasm'] });
+        statusDiv.innerText = "Status: Model loaded! Please upload an image.";
+      } catch (e) {
+        statusDiv.innerText = "Error loading model: " + e.message;
+      }
+    }
+
+    inputUpload.addEventListener('change', async (e) => {
+      if (!session) return alert("Model not loaded yet.");
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = async () => {
+        // Draw image to canvas
+        const maxSize = 640;
+        let w = img.width, h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round((h * maxSize) / w); w = maxSize; }
+          else { w = Math.round((w * maxSize) / h); h = maxSize; }
+        }
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+
+        statusDiv.innerText = "Status: Running inference...";
+        
+        // Prepare tensor for YOLOv8 (640x640)
+        // This is a simplified preprocessing
+        const inputCanvas = document.createElement('canvas');
+        inputCanvas.width = 640; inputCanvas.height = 640;
+        const inputCtx = inputCanvas.getContext('2d');
+        inputCtx.drawImage(img, 0, 0, 640, 640);
+        const imgData = inputCtx.getImageData(0, 0, 640, 640).data;
+        
+        const float32Data = new Float32Array(3 * 640 * 640);
+        for (let i = 0; i < 640 * 640; i++) {
+          float32Data[i] = imgData[i * 4] / 255.0;           // R
+          float32Data[640 * 640 + i] = imgData[i * 4 + 1] / 255.0; // G
+          float32Data[2 * 640 * 640 + i] = imgData[i * 4 + 2] / 255.0; // B
+        }
+        
+        const tensor = new ort.Tensor('float32', float32Data, [1, 3, 640, 640]);
+        const results = await session.run({ images: tensor });
+        
+        // Output from YOLOv8 is typically [1, 84, 8400]
+        const output = results.output0.data;
+        statusDiv.innerText = "Status: Inference complete! Parsing results...";
+        
+        // Very basic parsing for demo (no full NMS)
+        // 84 rows: 4 bbox (cx, cy, w, h) + 80 class probs
+        let bestConf = 0; let bestClass = -1; let bestBox = null;
+        for (let col = 0; col < 8400; col++) {
+          let maxProb = 0; let maxIdx = -1;
+          for (let c = 0; c < 80; c++) {
+            const prob = output[(4 + c) * 8400 + col];
+            if (prob > maxProb) { maxProb = prob; maxIdx = c; }
+          }
+          if (maxProb > 0.5 && maxProb > bestConf) {
+            bestConf = maxProb; bestClass = maxIdx;
+            const cx = output[0 * 8400 + col];
+            const cy = output[1 * 8400 + col];
+            const bw = output[2 * 8400 + col];
+            const bh = output[3 * 8400 + col];
+            bestBox = [cx, cy, bw, bh];
+          }
+        }
+
+        if (bestBox) {
+          const [cx, cy, bw, bh] = bestBox;
+          const rx = (cx - bw / 2) * (w / 640);
+          const ry = (cy - bh / 2) * (h / 640);
+          const rw = bw * (w / 640);
+          const rh = bh * (h / 640);
+          
+          ctx.strokeStyle = "red"; ctx.lineWidth = 3;
+          ctx.strokeRect(rx, ry, rw, rh);
+          ctx.fillStyle = "red"; ctx.font = "18px sans-serif";
+          ctx.fillText(`${yoloClasses[bestClass]} (${Math.round(bestConf * 100)}%)`, rx, ry > 20 ? ry - 5 : ry + 20);
+          statusDiv.innerText = `Status: Detected ${yoloClasses[bestClass]}`;
+        } else {
+          statusDiv.innerText = "Status: No objects detected with > 50% confidence.";
+        }
+      };
+    });
+
+    loadModel();
+  </script>
+</body>
+</html>

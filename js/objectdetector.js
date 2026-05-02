@@ -1,5 +1,18 @@
-// Wraps COCO-SSD to detect holdable objects in the video feed.
-// Runs at ~3fps independently of gesture processing.
+// Wraps YOLOv8 (ONNX Runtime Web) to detect holdable objects in the video feed.
+// Runs at ~2.5fps independently of gesture processing.
+
+const YOLO_CLASSES = [
+  'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+  'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+  'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+  'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+  'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+  'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+  'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+  'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
+  'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book',
+  'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+];
 
 const HOLDABLE = new Set([
   'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
@@ -12,7 +25,7 @@ const HOLDABLE = new Set([
 
 export class ObjectDetector {
   constructor() {
-    this.model    = null;
+    this.session  = null;
     this.detected = false;
     this.label    = null;
     this.bbox     = null;   // normalized {x,y,w,h} in 0-1 space
@@ -21,8 +34,12 @@ export class ObjectDetector {
   }
 
   async init(onProgress) {
-    onProgress?.('Loading object detection model…');
-    this.model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+    onProgress?.('Loading YOLOv8 model…');
+    try {
+      this.session = await ort.InferenceSession.create('./yolov8n.onnx', { executionProviders: ['wasm'] });
+    } catch (e) {
+      console.error("YOLOv8 init error:", e);
+    }
     onProgress?.(null);
   }
 
@@ -47,25 +64,67 @@ export class ObjectDetector {
   }
 
   async _loop() {
-    while (this._running) {
-      if (this.model && this._video?.readyState >= 2) {
-        try {
-          const preds = await this.model.detect(this._video, 10, 0.25);
-          const match = preds.find(p => HOLDABLE.has(p.class));
-          this.detected = !!match;
-          this.label    = match ? match.class : null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 640; canvas.height = 640;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-          if (match) {
-            const [bx, by, bw, bh] = match.bbox;
-            const vw = this._video.videoWidth  || 640;
-            const vh = this._video.videoHeight || 480;
-            this.bbox = { x: bx/vw, y: by/vh, w: bw/vw, h: bh/vh };
-          } else {
-            this.bbox = null;
+    while (this._running) {
+      if (this.session && this._video?.readyState >= 2) {
+        try {
+          ctx.drawImage(this._video, 0, 0, 640, 640);
+          const imgData = ctx.getImageData(0, 0, 640, 640).data;
+          
+          const float32Data = new Float32Array(3 * 640 * 640);
+          for (let i = 0; i < 640 * 640; i++) {
+            float32Data[i] = imgData[i * 4] / 255.0;
+            float32Data[640 * 640 + i] = imgData[i * 4 + 1] / 255.0;
+            float32Data[2 * 640 * 640 + i] = imgData[i * 4 + 2] / 255.0;
           }
-        } catch { /* ignore transient errors */ }
+          
+          const tensor = new ort.Tensor('float32', float32Data, [1, 3, 640, 640]);
+          const results = await this.session.run({ images: tensor });
+          const output = results.output0.data;
+          
+          let bestConf = 0; let bestClass = -1; let bestBox = null;
+          for (let col = 0; col < 8400; col++) {
+            let maxProb = 0; let maxIdx = -1;
+            for (let c = 0; c < 80; c++) {
+              const prob = output[(4 + c) * 8400 + col];
+              if (prob > maxProb) { maxProb = prob; maxIdx = c; }
+            }
+            if (maxProb > 0.4 && maxProb > bestConf) {
+              const label = YOLO_CLASSES[maxIdx];
+              if (HOLDABLE.has(label)) {
+                bestConf = maxProb; bestClass = maxIdx;
+                const cx = output[0 * 8400 + col];
+                const cy = output[1 * 8400 + col];
+                const bw = output[2 * 8400 + col];
+                const bh = output[3 * 8400 + col];
+                bestBox = [cx, cy, bw, bh];
+              }
+            }
+          }
+          
+          this.detected = !!bestBox;
+          this.label = bestBox ? YOLO_CLASSES[bestClass] : null;
+          
+          if (bestBox) {
+             const [cx, cy, bw, bh] = bestBox;
+             // Map bounding box to normalized 0-1 coordinate space for the video
+             this.bbox = {
+               x: (cx - bw/2) / 640,
+               y: (cy - bh/2) / 640,
+               w: bw / 640,
+               h: bh / 640
+             };
+          } else {
+             this.bbox = null;
+          }
+        } catch (e) {
+          console.error('YOLO inference error:', e);
+        }
       }
-      await new Promise(r => setTimeout(r, 350));
+      await new Promise(r => setTimeout(r, 400));
     }
   }
 }
