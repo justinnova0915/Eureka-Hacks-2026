@@ -35,6 +35,7 @@ let autoMode    = false;
 let isRecording = false;
 
 let phraseBuffer = [];
+let conversationHistory = []; // Tracks user and AI turns
 let lastNoteTime = 0;
 let idleTimer    = null;
 let isThinking   = false;
@@ -149,6 +150,7 @@ function onGesture(e) {
   
   notes.forEach(({ note, velocity, delay }) => {
     engine.playNote(note, velocity, delay);
+    detector.spawnParticle(gesture.x, gesture.y, Tone.Frequency(note, "midi").toNote());
   });
 
   // Throttle recording to phrase buffer (e.g. 1 per 160ms)
@@ -248,7 +250,14 @@ async function triggerGemini() {
     note: p.note, velocity: p.velocity, timeMs: Math.round(p.timestamp - baseTime)
   }));
   
-  const prompt = `Here is a sequence of musical notes played by the user with relative timestamps (ms): ${JSON.stringify(promptData)}. Respond with a logical continuation (up to 8 notes) using exactly this JSON format: [{"note": 60, "velocity": 80, "timeMs": 500}]. Do not include markdown formatting or backticks, just the raw JSON array.`;
+  conversationHistory.push({ role: "user", notes: promptData });
+  
+  // Include conversation history up to last 4 turns
+  const historyContext = conversationHistory.slice(-4).map(turn => 
+    `${turn.role === 'user' ? 'Human' : 'AI'} played: ${JSON.stringify(turn.notes)}`
+  ).join("\n");
+  
+  const prompt = `Here is the conversation history of the duet:\n${historyContext}\n\nRespond with a logical musical continuation (up to 8 notes) using exactly this JSON format: [{"note": 60, "velocity": 80, "timeMs": 500}]. Do not include markdown formatting or backticks, just the raw JSON array.`;
 
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
@@ -264,6 +273,7 @@ async function triggerGemini() {
     let text = data.candidates[0].content.parts[0].text;
     text = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const continuation = JSON.parse(text);
+    conversationHistory.push({ role: "ai", notes: continuation });
     
     playContinuation(continuation);
   } catch (e) {
@@ -281,6 +291,7 @@ function playContinuation(notes) {
   notes.forEach(n => {
     setTimeout(() => {
       engine.playNote(n.note, n.velocity, 0, 350);
+      detector.spawnParticle(0.5, 0.5, Tone.Frequency(n.note).toNote());
     }, n.timeMs || 0);
   });
   
@@ -327,15 +338,69 @@ autoBtn.addEventListener('click', () => {
 document.addEventListener('keydown', e => {
   const map = { '1':'guitar', '2':'piano', '3':'flute', '4':'drums', '5':'synth' };
   if (map[e.key]) switchInstrument(map[e.key]);
+  
+  if (e.key.toLowerCase() === 'd') {
+    runDemoSequence();
+  }
 });
 
+async function runDemoSequence() {
+  if (Tone.context.state !== 'running') await Tone.start();
+  
+  // Step 1: Display "HOLD ANY OBJECT"
+  camHint.textContent = "HOLD ANY OBJECT";
+  camHint.style.color = "var(--text)";
+  
+  // Step 2: Pretend to detect banana
+  setTimeout(() => {
+    camHint.textContent = "🎵 banana detected — play!";
+    camHint.style.color = "#06b6d4";
+    if (engine.current !== 'guitar') switchInstrument('guitar');
+  }, 2000);
+  
+  // Step 3: Play canned riff
+  setTimeout(() => {
+    const riff = [
+      { n: 60, d: 0 }, { n: 63, d: 200 }, { n: 65, d: 400 }, 
+      { n: 67, d: 600 }, { n: 65, d: 800 }, { n: 63, d: 1000 }, 
+      { n: 60, d: 1200 }, { n: 67, d: 1600 }
+    ];
+    riff.forEach(note => {
+      setTimeout(() => {
+        engine.playNote(note.n, 80, 0, 300);
+        detector.spawnParticle(0.5, 0.5, Tone.Frequency(note.n, "midi").toNote());
+        
+        // Add to phrase buffer so AI can continue it
+        phraseBuffer.push({ note: note.n, velocity: 80, timestamp: performance.now() + note.d });
+        if (phraseBuffer.length > 20) phraseBuffer.shift();
+      }, note.d);
+    });
+  }, 3500);
+  
+  // Step 4: Trigger AI continuation
+  setTimeout(() => {
+    if (!aiActive) aiBtn.click(); // Enable AI mode if not enabled
+    triggerGemini();
+  }, 6000);
+  
+  // Step 5: Show DUET MODE ACTIVE
+  setTimeout(() => {
+    camHint.textContent = "🎸 DUET MODE ACTIVE";
+    camHint.style.color = "var(--purple)";
+  }, 8000);
+}
+
 // ── Audio visualizer ──────────────────────────────────────────────────────────
-let analyser, vizCtx, vizAnim;
+let analyser, volMeter, vizCtx, vizAnim;
+let volBars = [];
 
 function initViz() {
   analyser = new Tone.Analyser('waveform', 256);
+  volMeter = new Tone.Meter();
   Tone.getDestination().connect(analyser);
+  Tone.getDestination().connect(volMeter);
   vizCtx = vizCanvas.getContext('2d');
+  volBars = document.querySelectorAll('.vol-bar');
   drawViz();
 }
 
@@ -363,6 +428,18 @@ function drawViz() {
     i === 0 ? vizCtx.moveTo(x, y) : vizCtx.lineTo(x, y);
   });
   vizCtx.stroke();
+
+  // Draw volume bars
+  const db = volMeter.getValue();
+  const vol = Math.max(0, Math.min(1, (db + 60) / 60)); // normalized 0 to 1
+  volBars.forEach((bar, i) => {
+    const threshold = (i + 1) * 0.2; // 0.2, 0.4, 0.6, 0.8, 1.0
+    const hPct = vol >= threshold ? 100 : (vol >= threshold - 0.2 ? ((vol - (threshold - 0.2)) / 0.2) * 100 : 10);
+    bar.style.height = `${Math.max(10, hPct)}%`;
+    if (vol > 0.75) bar.style.background = 'var(--red)';
+    else if (vol > 0.5) bar.style.background = 'var(--amber)';
+    else bar.style.background = 'var(--green)';
+  });
 }
 
 // ── Audio context unlock (browsers require a user gesture) ───────────────────

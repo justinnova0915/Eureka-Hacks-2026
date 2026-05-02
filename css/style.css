@@ -91,6 +91,15 @@ header {
 }
 @keyframes pulse { 50% { opacity: 0.3; transform: scale(1.5); } }
 
+#volume-meter {
+  display: flex; align-items: flex-end; gap: 3px;
+  height: 20px; margin-left: auto;
+}
+.vol-bar {
+  width: 6px; height: 10%; background: var(--green);
+  border-radius: 2px; transition: height 0.05s ease, background 0.1s ease;
+}
+
 /* ── Main ── */
 main {
   display: flex; flex: 1; gap: 0.75rem;

@@ -17,8 +17,12 @@ export class GestureDetector extends EventTarget {
     this.lastGestureTs = 0;
     this.lastTapTs     = 0;
     this.prevPinchDist = null;
+    
+    this.particles = [];
+    this.latestResults = null;
 
     this._initHands();
+    this._renderLoop();
   }
 
   _initHands() {
@@ -46,17 +50,7 @@ export class GestureDetector extends EventTarget {
   // ── Results handler ──────────────────────────────────────────────────────
 
   _onResults(results) {
-    const { canvas, ctx } = { canvas: this.canvas, ctx: this.ctx };
-
-    // Match canvas pixel buffer to its CSS display size so MediaPipe's
-    // normalized coords (0-1) land exactly on the visible video pixels.
-    const dw = canvas.offsetWidth;
-    const dh = canvas.offsetHeight;
-    if (dw && dh && (canvas.width !== dw || canvas.height !== dh)) {
-      canvas.width  = dw;
-      canvas.height = dh;
-    }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.latestResults = results;
 
     if (!results.multiHandLandmarks?.length) {
       this._scheduleIdle();
@@ -70,32 +64,95 @@ export class GestureDetector extends EventTarget {
     this.history.push({ landmarks: lm, ts });
     if (this.history.length > this.MAX_HIST) this.history.shift();
 
-    this._drawHands(results);
-
     const gesture = this._detect(lm, ts);
     if (gesture) this.dispatchEvent(new CustomEvent('gesture', { detail: gesture }));
 
     this.dispatchEvent(new CustomEvent('hand', { detail: { landmarks: lm } }));
   }
 
-  // ── Drawing ──────────────────────────────────────────────────────────────
+  // ── Particles ────────────────────────────────────────────────────────────
+  spawnParticle(nx, ny, noteName) {
+    // Map note base class (e.g. "C", "D#") to a color
+    const base = noteName.replace(/[0-9]/g, '').replace('#', '');
+    const hues = { 'C':185, 'D':205, 'E':225, 'F':245, 'G':265, 'A':285, 'B':305 };
+    const h = hues[base] || 200;
+    const color = `hsl(${h}, 80%, 60%)`;
 
-  _drawHands(results) {
-    const ctx = this.ctx;
-    for (const lm of results.multiHandLandmarks) {
-      drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#7c3aed55', lineWidth: 2 });
-      drawLandmarks(ctx, lm, { color: '#06b6d4cc', lineWidth: 1, radius: 3 });
+    const cx = nx * this.canvas.width;
+    const cy = ny * this.canvas.height;
+
+    for (let i = 0; i < 3; i++) {
+      this.particles.push({
+        x: cx, y: cy,
+        vx: (Math.random() - 0.5) * 5,
+        vy: -1.5 - Math.random() * 3,
+        life: 1.0,
+        size: 4 + Math.random() * 7,
+        color: color,
+        label: i === 0 ? noteName : null
+      });
     }
-    // Highlight fingertips
-    const tips = [4, 8, 12, 16, 20];
-    for (const lm of results.multiHandLandmarks) {
-      for (const idx of tips) {
-        const p = lm[idx];
+  }
+
+  // ── Drawing ──────────────────────────────────────────────────────────────
+  
+  _renderLoop() {
+    requestAnimationFrame(() => this._renderLoop());
+    const { canvas, ctx } = this;
+
+    const dw = canvas.offsetWidth;
+    const dh = canvas.offsetHeight;
+    if (dw && dh && (canvas.width !== dw || canvas.height !== dh)) {
+      canvas.width  = dw;
+      canvas.height = dh;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (this.latestResults && this.latestResults.multiHandLandmarks?.length) {
+      for (const lm of this.latestResults.multiHandLandmarks) {
+        drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#7c3aed55', lineWidth: 2 });
+        drawLandmarks(ctx, lm, { color: '#06b6d4cc', lineWidth: 1, radius: 3 });
+      }
+      const tips = [4, 8, 12, 16, 20];
+      for (const lm of this.latestResults.multiHandLandmarks) {
+        for (const idx of tips) {
+          const p = lm[idx];
+          ctx.beginPath();
+          ctx.arc(p.x * canvas.width, p.y * canvas.height, 5, 0, Math.PI * 2);
+          ctx.fillStyle = '#06b6d4';
+          ctx.fill();
+        }
+      }
+    }
+
+    // Draw particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= 0.022;
+      
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+        continue;
+      }
+      
+      ctx.save();
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      
+      if (p.label) {
+        ctx.font = 'bold 16px Inter, sans-serif';
+        // Needs horizontal flip back because canvas is scaleX(-1) mirrored
+        ctx.translate(p.x, p.y);
+        ctx.scale(-1, 1);
+        ctx.fillText(p.label, -10, 5);
+      } else {
         ctx.beginPath();
-        ctx.arc(p.x * this.canvas.width, p.y * this.canvas.height, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#06b6d4';
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
     }
   }
 
