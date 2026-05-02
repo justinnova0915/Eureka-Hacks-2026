@@ -152,12 +152,13 @@ header {
 
 /* ── Main ── */
 main {
-  display: flex; flex: 1; gap: 1rem;
-  padding: 1rem; overflow: hidden;
+  display: flex; flex-direction: column; flex: 1; gap: 1.5rem;
+  padding: 1.5rem; overflow: hidden; align-items: center;
 }
 
 #camera-panel {
-  position: relative; flex: 0 0 480px;
+  position: relative; width: 100%; max-width: 640px; height: 360px;
+  flex-shrink: 0;
   background: #000;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -194,6 +195,7 @@ main {
 }
 
 #viz-panel {
+  width: 100%; max-width: 960px;
   flex: 1; position: relative;
   background: var(--panel);
   border: 1px solid var(--border);

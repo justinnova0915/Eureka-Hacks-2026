@@ -407,10 +407,11 @@ async function runDemoSequence() {
 // ── Audio visualizer ──────────────────────────────────────────────────────────
 let analyser, volMeter, vizCtx, vizAnim;
 let volBars = [];
+let waveHistory = new Array(300).fill(0);
 
 function initViz() {
   analyser = new Tone.Analyser('waveform', 256);
-  volMeter = new Tone.Meter();
+  volMeter = new Tone.Meter({ normalRange: true });
   Tone.getDestination().connect(analyser);
   Tone.getDestination().connect(volMeter);
   vizCtx = vizCanvas.getContext('2d');
@@ -426,26 +427,41 @@ function drawViz() {
   }
   vizCtx.clearRect(0, 0, w, h);
 
-  const data  = analyser.getValue();
   const color = INST_CONFIG[engine.current]?.color ?? '#7c3aed';
-  const step  = w / data.length;
+  
+  // Get volume for bars
+  const vol = volMeter.getValue(); // since normalRange is true, this is 0 to 1
+  
+  // Flowing timeline history
+  waveHistory.push(vol);
+  if (waveHistory.length > 300) waveHistory.shift();
+  
+  const step = w / waveHistory.length;
 
   vizCtx.beginPath();
   vizCtx.strokeStyle = color;
-  vizCtx.lineWidth   = 2;
+  vizCtx.lineWidth   = 3;
   vizCtx.shadowColor = color;
-  vizCtx.shadowBlur  = 8;
+  vizCtx.shadowBlur  = 12;
 
-  data.forEach((v, i) => {
+  // Draw top half
+  waveHistory.forEach((v, i) => {
     const x = i * step;
-    const y = ((v + 1) / 2) * h;
+    const y = h / 2 - (v * h * 0.4);
+    i === 0 ? vizCtx.moveTo(x, y) : vizCtx.lineTo(x, y);
+  });
+  vizCtx.stroke();
+  
+  // Draw bottom half
+  vizCtx.beginPath();
+  waveHistory.forEach((v, i) => {
+    const x = i * step;
+    const y = h / 2 + (v * h * 0.4);
     i === 0 ? vizCtx.moveTo(x, y) : vizCtx.lineTo(x, y);
   });
   vizCtx.stroke();
 
   // Draw volume bars
-  const db = volMeter.getValue();
-  const vol = Math.max(0, Math.min(1, (db + 60) / 60)); // normalized 0 to 1
   volBars.forEach((bar, i) => {
     const threshold = (i + 1) * 0.2; // 0.2, 0.4, 0.6, 0.8, 1.0
     const hPct = vol >= threshold ? 100 : (vol >= threshold - 0.2 ? ((vol - (threshold - 0.2)) / 0.2) * 100 : 10);
