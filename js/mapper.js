@@ -46,6 +46,7 @@ export class NoteMapper {
     const note = this.xToNote(x, isDrum);
 
     switch (type) {
+      case 'hit':
       case 'tap':
       case 'pluck':
         this._lastNote = note;

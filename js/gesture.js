@@ -48,10 +48,13 @@ export class GestureDetector extends EventTarget {
   _onResults(results) {
     const { canvas, ctx } = { canvas: this.canvas, ctx: this.ctx };
 
-    // Keep canvas in sync with video feed dimensions
-    if (this.video.videoWidth) {
-      canvas.width  = this.video.videoWidth;
-      canvas.height = this.video.videoHeight;
+    // Match canvas pixel buffer to its CSS display size so MediaPipe's
+    // normalized coords (0-1) land exactly on the visible video pixels.
+    const dw = canvas.offsetWidth;
+    const dh = canvas.offsetHeight;
+    if (dw && dh && (canvas.width !== dw || canvas.height !== dh)) {
+      canvas.width  = dw;
+      canvas.height = dh;
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -151,7 +154,7 @@ export class GestureDetector extends EventTarget {
     // Pluck: pinch releases quickly
     if (this.prevPinchDist !== null) {
       const delta = pinch - this.prevPinchDist;
-      if (this.prevPinchDist < 0.055 && delta > 0.04 && ts - this.lastTapTs > 140) {
+      if (this.prevPinchDist < 0.06 && delta > 0.03 && ts - this.lastTapTs > 300) {
         this.prevPinchDist = pinch;
         this.lastTapTs = ts;
         return { type: 'pluck', x: lm[0].x, y: lm[0].y,
@@ -161,9 +164,9 @@ export class GestureDetector extends EventTarget {
     this.prevPinchDist = pinch;
 
     // Strum: fast horizontal sweep, 3+ fingers open
-    if (ext >= 3 && Math.abs(vel.x) > 1.1) {
+    if (ext >= 3 && Math.abs(vel.x) > 0.75) {
       const dir = vel.x > 0 ? 'right' : 'left';
-      if (dir !== this.lastStrumDir || ts - this.lastGestureTs > 180) {
+      if (dir !== this.lastStrumDir || ts - this.lastGestureTs > 350) {
         this.lastStrumDir  = dir;
         this.lastGestureTs = ts;
         return { type: 'strum', direction: dir,
@@ -178,25 +181,41 @@ export class GestureDetector extends EventTarget {
       const cur = this.history[this.history.length - 1];
       const dt  = Math.max(8, cur.ts - old.ts) / 1000;
       const tipVY = (cur.landmarks[8].y - old.landmarks[8].y) / dt;
-      if (tipVY > 1.4 && ts - this.lastTapTs > 110) {
+      if (tipVY > 0.9 && ts - this.lastTapTs > 320) {
         this.lastTapTs = ts;
         return { type: 'tap', x: lm[8].x, y: lm[8].y,
                  velocity: Math.min(1, tipVY / 3) };
       }
     }
 
+    // Hit: whole-hand downward strike (works with gripped/closed fist)
+    if (this.history.length >= 3) {
+      const old3 = this.history[this.history.length - 3];
+      const cur3 = this.history[this.history.length - 1];
+      const dt3  = Math.max(8, cur3.ts - old3.ts) / 1000;
+      const wristVY = (cur3.landmarks[0].y - old3.landmarks[0].y) / dt3;
+      if (wristVY > 0.9 && ts - this.lastTapTs > 320) {
+        this.lastTapTs = ts;
+        return { type: 'hit', x: lm[0].x, y: lm[0].y,
+                 velocity: Math.min(1, wristVY / 3) };
+      }
+    }
+
     // Air-press: open palm pushing down
     if (ext === 4 && this._thumbOut(lm) && vel.y > 0.75 && vel.mag < 1.8) {
-      if (ts - this.lastGestureTs > 280) {
+      if (ts - this.lastGestureTs > 500) {
         this.lastGestureTs = ts;
         return { type: 'airpress', x: lm[0].x, y: lm[0].y,
                  velocity: Math.min(1, vel.y / 1.5) };
       }
     }
 
-    // Slide: gentle horizontal drift with hand open
+    // Slide: gentle horizontal drift — throttled so it doesn't flood notes
     if (ext >= 2 && Math.abs(vel.x) > 0.25 && Math.abs(vel.x) < 1.1) {
-      return { type: 'slide', x: lm[0].x, y: lm[0].y, velocity: 0.55, dx: vel.x };
+      if (ts - this.lastGestureTs > 180) {
+        this.lastGestureTs = ts;
+        return { type: 'slide', x: lm[0].x, y: lm[0].y, velocity: 0.55, dx: vel.x };
+      }
     }
 
     return null;
